@@ -1,0 +1,17 @@
+{
+  "name": "lantern-bingo",
+  "version": "1.0.0",
+  "description": "Lantern Bingo — shared-call number game in a lantern hall.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'tests/*.test.js'",
+    "validate": "node tests/validate-content.js",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.185.1"
+  }
+}

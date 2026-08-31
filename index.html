@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>Lantern Bingo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8F%AE%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar" role="banner">
+    <h1 class="game-title">Lantern Bingo</h1>
+    <p id="live-status" class="status-line" role="status" aria-live="polite"></p>
+    <p id="live-alert" class="visually-hidden" role="alert" aria-live="assertive"></p>
+    <p id="captions" class="captions" aria-live="polite" aria-label="Audio captions"></p>
+  </header>
+
+  <main id="main" role="main">
+
+    <!-- Title / home -->
+    <section id="screen-title" class="screen" aria-labelledby="title-heading">
+      <h2 id="title-heading" class="visually-hidden">Main menu</h2>
+      <div class="title-hero" aria-hidden="true">🏮</div>
+      <nav class="menu-col" aria-label="Main menu">
+        <button type="button" class="menu-btn primary" data-nav="play-quick">Play</button>
+        <button type="button" class="menu-btn" data-nav="journey">Journey</button>
+        <button type="button" class="menu-btn" data-nav="daily">Daily</button>
+        <button type="button" class="menu-btn" data-nav="practice">Practice</button>
+        <button type="button" class="menu-btn" data-nav="challenge">Challenge</button>
+        <button type="button" class="menu-btn" data-nav="learn">Learn</button>
+        <button type="button" class="menu-btn" data-nav="hosted">Hosted Play</button>
+        <button type="button" class="menu-btn" data-nav="settings">Settings</button>
+        <button type="button" class="menu-btn" data-nav="help">Help</button>
+      </nav>
+      <p id="title-progress" class="muted"></p>
+    </section>
+
+    <!-- Mode setup -->
+    <section id="screen-setup" class="screen" hidden aria-labelledby="setup-heading">
+      <h2 id="setup-heading">Mode Setup</h2>
+      <div id="setup-details" class="panel"></div>
+      <div class="row-actions">
+        <button type="button" class="menu-btn primary" id="setup-start">Start</button>
+        <button type="button" class="menu-btn" data-nav="title">Back</button>
+      </div>
+    </section>
+
+    <!-- Journey stage list -->
+    <section id="screen-journey" class="screen" hidden aria-labelledby="journey-heading">
+      <h2 id="journey-heading">Journey</h2>
+      <ol id="journey-list" class="stage-list"></ol>
+      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title">Back</button></div>
+    </section>
+
+    <!-- Learn lesson list -->
+    <section id="screen-learn" class="screen" hidden aria-labelledby="learn-heading">
+      <h2 id="learn-heading">Learn</h2>
+      <ol id="learn-list" class="stage-list"></ol>
+      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title">Back</button></div>
+    </section>
+
+    <!-- Play -->
+    <section id="screen-play" class="screen play-screen" hidden aria-labelledby="objective-text">
+      <div class="play-layout">
+        <aside class="rail rail-left" aria-label="Objective and progress">
+          <h3 id="objective-text">Objective</h3>
+          <p id="pattern-desc" class="muted"></p>
+          <p id="progress-text"></p>
+          <p id="score-preview" class="muted"></p>
+        </aside>
+
+        <div class="playfield">
+          <div id="canvas-holder" aria-hidden="true"></div>
+          <div id="call-banner" class="call-banner" role="status" aria-live="polite">
+            <span id="call-display">—</span>
+            <span id="call-timer" class="muted"></span>
+          </div>
+          <div id="card-grid" class="card-grid" role="grid" aria-label="Your bingo card"></div>
+          <p id="hint-text" class="hint-text" role="status"></p>
+        </div>
+
+        <aside class="rail rail-right" aria-label="Status">
+          <h3>Hall</h3>
+          <ul id="roster" class="roster"></ul>
+        </aside>
+      </div>
+
+      <footer id="action-tray" class="action-tray" aria-label="Actions">
+        <button type="button" class="tray-btn" id="btn-call">Call <kbd>Space</kbd></button>
+        <button type="button" class="tray-btn primary" id="btn-claim" disabled>Claim <kbd>C</kbd></button>
+        <button type="button" class="tray-btn" id="btn-undo" hidden>Undo <kbd>U</kbd></button>
+        <button type="button" class="tray-btn" id="btn-hint">Hint <kbd>H</kbd></button>
+        <button type="button" class="tray-btn" id="btn-pause">Pause <kbd>P</kbd></button>
+      </footer>
+    </section>
+
+    <!-- Results -->
+    <section id="screen-results" class="screen" hidden aria-labelledby="results-heading">
+      <h2 id="results-heading">Results</h2>
+      <div id="results-body" class="panel"></div>
+      <div class="row-actions">
+        <button type="button" class="menu-btn primary" id="results-retry">Retry</button>
+        <button type="button" class="menu-btn" id="results-replay">Copy Replay</button>
+        <button type="button" class="menu-btn" id="results-next">Continue</button>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="screen-settings" class="screen" hidden aria-labelledby="settings-heading">
+      <h2 id="settings-heading">Settings</h2>
+      <form id="settings-form" class="panel settings-form">
+        <fieldset>
+          <legend>Audio</legend>
+          <label>Music <input type="range" name="vol-music" min="0" max="1" step="0.05" /></label>
+          <label>Effects <input type="range" name="vol-effects" min="0" max="1" step="0.05" /></label>
+          <label>Ambience <input type="range" name="vol-ambience" min="0" max="1" step="0.05" /></label>
+          <label>Voice cues <input type="range" name="vol-voice" min="0" max="1" step="0.05" /></label>
+          <label><input type="checkbox" name="muted" /> Mute all</label>
+        </fieldset>
+        <fieldset>
+          <legend>Graphics</legend>
+          <label>Quality tier
+            <select name="quality">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+          <label>Theme
+            <select name="theme">
+              <option value="ember">Ember Court</option>
+              <option value="jade">Jade Garden</option>
+              <option value="river">River Night</option>
+              <option value="plum">Plum Festival</option>
+              <option value="paper">Paper Dawn</option>
+            </select>
+          </label>
+          <label><input type="checkbox" name="reducedMotion" /> Reduced motion</label>
+          <label><input type="checkbox" name="highContrast" /> High contrast</label>
+        </fieldset>
+        <fieldset>
+          <legend>Accessibility &amp; Controls</legend>
+          <label><input type="checkbox" name="largeText" /> Larger text</label>
+          <label><input type="checkbox" name="leftHanded" /> Left-handed action tray</label>
+          <label>Call speed
+            <select name="callSpeed">
+              <option value="3000">Fast (3s)</option>
+              <option value="5000">Normal (5s)</option>
+              <option value="8000">Relaxed (8s)</option>
+              <option value="0">Manual only</option>
+            </select>
+          </label>
+          <label><input type="checkbox" name="autoHint" /> Hint markable cells</label>
+        </fieldset>
+        <div class="row-actions">
+          <button type="button" class="menu-btn" id="settings-reset">Reset progress</button>
+          <button type="button" class="menu-btn primary" data-nav="title">Done</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Help -->
+    <section id="screen-help" class="screen" hidden aria-labelledby="help-heading">
+      <h2 id="help-heading">How to Play</h2>
+      <div class="panel help-cards">
+        <article class="rule-card">
+          <h3>Mark calls</h3>
+          <p>Numbers are drawn one at a time and shown on the lantern ball. If a called number is on your card, select that cell to mark it (<kbd>Enter</kbd> or tap).</p>
+        </article>
+        <article class="rule-card">
+          <h3>Complete the pattern</h3>
+          <p>Each round names a target pattern — a line, corners, a frame, or the full card. The objective panel always shows the current target.</p>
+        </article>
+        <article class="rule-card">
+          <h3>Claim first</h3>
+          <p>When your marks complete the target pattern, press <strong>Claim</strong> (<kbd>C</kbd>) before the other lanterns do. False claims cost score.</p>
+        </article>
+        <article class="rule-card">
+          <h3>Keyboard</h3>
+          <p>Arrow keys move between cells, <kbd>Enter</kbd>/<kbd>Space</kbd> mark, <kbd>C</kbd> claim, <kbd>U</kbd> undo in Practice, <kbd>H</kbd> hint, <kbd>P</kbd> pause, <kbd>Esc</kbd> back.</p>
+        </article>
+        <article class="rule-card">
+          <h3>Scoring</h3>
+          <p>Pattern 1000 · each line +50 · each mark +10 · speed bonus under par · invalid action −25. Ties break on completion, fewer invalid actions, then faster claim.</p>
+        </article>
+        <article class="rule-card">
+          <h3>Fair play</h3>
+          <p>Every round is seeded and replayable. Daily seeds are fixed per UTC day and identical for everyone.</p>
+        </article>
+      </div>
+      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title">Back</button></div>
+    </section>
+
+  </main>
+
+  <!-- Pause / generic modal -->
+  <dialog id="modal-root" aria-labelledby="modal-title">
+    <div class="modal-inner">
+      <h2 id="modal-title"></h2>
+      <div id="modal-body"></div>
+      <div id="modal-actions" class="modal-actions"></div>
+    </div>
+  </dialog>
+
+</div>
+<script type="module" src="./js/game.js"></script>
+<noscript><p>Lantern Bingo requires JavaScript to run.</p></noscript>
+</body>
+</html>

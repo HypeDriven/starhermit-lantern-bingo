@@ -1,0 +1,98 @@
+[
+  {
+    "name": "ui-lantern-tap",
+    "seconds": 1,
+    "prompt": "A short soft fingertip tap on a paper lantern shell, gentle muted papery thump with a faint bamboo rattle, dry and close, no reverb tail.",
+    "event": "ui"
+  },
+  {
+    "name": "ui-menu-select",
+    "seconds": 1,
+    "prompt": "A light wooden clave click paired with a tiny brass bell ping, crisp and friendly UI confirmation, short decay, intimate hall acoustics.",
+    "event": "ui"
+  },
+  {
+    "name": "call-ball-draw",
+    "seconds": 1,
+    "prompt": "A small wooden bingo ball rattling up a bamboo chute and landing with a hollow knock, followed by a soft announce chime, warm hall ambience.",
+    "event": "call"
+  },
+  {
+    "name": "call-number-chime",
+    "seconds": 2,
+    "prompt": "Two gentle struck notes on a small brass singing bowl, rising pitch, clear ringing tone that announces a drawn number, soft room reverb.",
+    "event": "call"
+  },
+  {
+    "name": "mark-paper-stamp",
+    "seconds": 1,
+    "prompt": "A round rubber stamp pressing firmly onto a paper card, soft thud with an inky squelch and slight paper fiber texture, single decisive stamp.",
+    "event": "mark"
+  },
+  {
+    "name": "mark-ink-dab",
+    "seconds": 1,
+    "prompt": "A felt-tip bingo dauber dabbing once onto cardboard, wet inky dot sound with a soft fibrous press, short and satisfying.",
+    "event": "mark"
+  },
+  {
+    "name": "invalid-wood-thud",
+    "seconds": 1,
+    "prompt": "A dull muffled knock on a thick wooden table, low and discouraging, no ring, clearly signaling a rejected action.",
+    "event": "invalid"
+  },
+  {
+    "name": "invalid-brush-scratch",
+    "seconds": 1,
+    "prompt": "A dry brush bristle scratch across rough paper, one quick downward stroke, slightly harsh, signaling something not allowed.",
+    "event": "invalid"
+  },
+  {
+    "name": "line-lantern-glow",
+    "seconds": 2,
+    "prompt": "A warm rising shimmer of small tuned metal chimes, three ascending bright notes with a glowing whoosh of a paper lantern flaring up gently.",
+    "event": "line"
+  },
+  {
+    "name": "line-chime-rise",
+    "seconds": 2,
+    "prompt": "Three ascending struck glass chime notes, each brighter than the last, celebratory but small, gentle hall reverb tail.",
+    "event": "line"
+  },
+  {
+    "name": "win-festival-fanfare",
+    "seconds": 3,
+    "prompt": "A short festive fanfare of small temple bells and a bamboo flute flourish, joyful rising melody ending on a bright gong shimmer, night market celebration.",
+    "event": "win"
+  },
+  {
+    "name": "win-bingo-bells",
+    "seconds": 3,
+    "prompt": "A cheerful cascade of brass hand bells ringing in a quick ascending pattern, ending with a resonant small gong strike and sparkling decay.",
+    "event": "win"
+  },
+  {
+    "name": "lose-paper-sigh",
+    "seconds": 2,
+    "prompt": "A soft descending sigh made of rustling paper and a low flute note falling in pitch, gentle disappointment, no harshness.",
+    "event": "lose"
+  },
+  {
+    "name": "lose-ember-fade",
+    "seconds": 2,
+    "prompt": "A single warm ember pop followed by a low fading gong hum that slowly dies out, quiet and somber, end of a lost round.",
+    "event": "lose"
+  },
+  {
+    "name": "tick-clock-tap",
+    "seconds": 1,
+    "prompt": "A single precise tick of a small mechanical clock escapement, dry wooden click, very short, quiet countdown cue.",
+    "event": "tick"
+  },
+  {
+    "name": "tick-wood-tick",
+    "seconds": 1,
+    "prompt": "A thin bamboo stick tapping once on a hollow wood block, crisp high click with minimal resonance, metronome-like urgency cue.",
+    "event": "tick"
+  }
+]

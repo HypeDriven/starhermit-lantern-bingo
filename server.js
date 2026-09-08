@@ -41,10 +41,12 @@ const server = http.createServer((req, res) => {
     return;
   }
   // static files, confined to ROOT
-  let p = path.normalize(decodeURIComponent(url.pathname));
+  let p;
+  try { p = path.normalize(decodeURIComponent(url.pathname)); }
+  catch (_) { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'bad-request' })); return; }
   if (p === '/' || p === '\\') p = '/index.html';
   const file = path.join(ROOT, p);
-  if (!file.startsWith(ROOT) || p.includes('..')) { res.writeHead(403); res.end(); return; }
+  if ((file !== ROOT && !file.startsWith(ROOT + path.sep)) || p.split(path.sep).some(part => part.startsWith('.'))) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'not-found' })); return; }
     res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
@@ -138,7 +140,10 @@ function startRoom() {
   const day = new Date().toISOString().slice(0, 10);
   const stage = { ...dailyFor(day), id: 'hosted-' + day };
   room.stage = stage;
-  // humans keep their seats; remaining seats are deterministic bots
+  // seat currently connected humans; drop stale disconnected members so old
+  // guests don't hold seats forever (a reconnecting player already has its
+  // socket attached by the time startRoom runs)
+  for (const [id, m] of room.members) if (!m.sock) room.members.delete(id);
   const humans = [...room.members.keys()];
   const ids = humans.slice(0, ROOM_SIZE);
   let botN = 1;
@@ -162,7 +167,11 @@ function ensureRoom() {
 
 function serverCall() {
   if (!room.session || room.session.ended) { clearInterval(room.callTimer); return; }
-  room.session.dispatch({ type: 'call' });
+  const r = room.session.dispatch({ type: 'call' });
+  if (!r.ok) { // deck exhausted: no more calls will change state
+    clearInterval(room.callTimer);
+    return;
+  }
   // deterministic bots: mark all legal cells with skill-based notice, then claim
   const state = room.session.state;
   for (const p of state.players) {
@@ -188,8 +197,13 @@ function serverCall() {
 function endHostedRound(winner) {
   broadcast(snapshotMsg({ type: 'snapshot', winner }));
   clearInterval(room.callTimer);
-  // results reconciliation: reset room after a grace period
-  setTimeout(() => { room.session = null; ensureRoom(); }, 15000);
+  // results reconciliation: reset room after a grace period (unless a join
+  // already started a fresh round)
+  setTimeout(() => {
+    if (room.session && !room.session.ended) return;
+    room.session = null;
+    ensureRoom();
+  }, 15000);
 }
 
 function handleJoin(sock, msg) {
@@ -201,12 +215,14 @@ function handleJoin(sock, msg) {
   }
   const member = room.members.get(playerId);
   member.sock = sock;
-  // seat the human: if the live round has no seat for them, restart the round
-  // with humans seated (rounds are short; seats are assigned at start).
-  if (!room.session || room.session.ended ||
-      !room.session.state.players.some(p => p.id === playerId)) {
-    startRoom();
-  }
+  // Start a fresh round when none is live, or when the live round has no human
+  // seated (a bot-only round costs nothing to restart). A new joiner while
+  // other humans are mid-round must not wipe their round — they spectate
+  // until the next round seats them. Reconnecting players keep their seat.
+  const liveRound = room.session && !room.session.ended;
+  const humanSeated = liveRound &&
+    room.session.state.players.some(p => room.members.has(p.id));
+  if (!liveRound || !humanSeated) startRoom();
   const inSeats = room.session.state.players.some(p => p.id === playerId);
   wsSend(sock, {
     type: 'joined', playerId, roomId: room.id, stage: room.stage,
@@ -280,5 +296,5 @@ server.on('error', (err) => {
   throw err;
 });
 server.listen(PORT, () => {
-  console.log(`Lantern Bingo server listening on http://localhost:${PORT}`);
+  console.log(`Lantern Bingo server listening on http://localhost:${server.address().port}`);
 });

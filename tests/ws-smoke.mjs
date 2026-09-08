@@ -61,12 +61,16 @@ function wsConnect() {
     }
     function next(pred, ms = 5000) {
       return new Promise((res, rej) => {
-        const t = setTimeout(() => rej(new Error('timeout waiting for frame')), ms);
         const check = () => {
           const i = frames.findIndex(pred);
           if (i >= 0) { clearTimeout(t); res(frames.splice(i, 1)[0]); }
           else waiters.push(check);
         };
+        const t = setTimeout(() => {
+          const k = waiters.indexOf(check);
+          if (k >= 0) waiters.splice(k, 1); // don't let a timed-out waiter eat later frames
+          rej(new Error('timeout waiting for frame'));
+        }, ms);
         check();
       });
     }

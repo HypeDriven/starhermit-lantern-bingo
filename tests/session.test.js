@@ -47,6 +47,29 @@ test('undo restores previous state', () => {
   }
 });
 
+test('replay exported after undo still verifies', () => {
+  const s = new Session({ seed: 77, pattern: 'any-line', playerIds: ['p'] });
+  // cross a hash checkpoint (every 20 ticks), then undo back past it
+  for (let i = 0; i < 21; i++) s.dispatch({ type: 'call' });
+  assert.ok(s.hashes.length > 0);
+  while (s.state.tick > 19) assert.equal(s.undo(), true);
+  const env = s.exportReplay();
+  assert.ok(env.hashes.every(h => h.tick <= env.commands.length));
+  const r = Session.verifyReplay(env);
+  assert.equal(r.ok, true, r.error || '');
+});
+
+test('replay: tampered initial hash detected', () => {
+  const a = new Session({ seed: 9, pattern: 'any-line', playerIds: ['p'] });
+  a.dispatch({ type: 'call' });
+  const env = a.exportReplay();
+  assert.ok(/^[0-9a-f]{8}$/.test(env.initialHash));
+  env.initialHash = 'deadbeef';
+  const r = Session.verifyReplay(env);
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'initial-hash-mismatch');
+});
+
 test('golden sessions: easy/medium/hard terminate with valid winners', () => {
   for (const [seed, pattern, par] of [[100, 'any-line', 42], [200, 'corners', 56], [300, 'full-house', 75]]) {
     const s = new Session({ seed, pattern, parCalls: par, playerIds: ['p'] });

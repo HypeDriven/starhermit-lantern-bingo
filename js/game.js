@@ -482,6 +482,8 @@ function playerIdsFor(stage) {
 function startRound(mode, stage) {
   app.mode = mode;
   app.stage = stage;
+  settingsReturnPause = false;
+  helpReturnPause = false;
   setPhase('preparing', stage.title || stage.id);
   app.session = new Session({
     seed: stage.seed >>> 0,
@@ -493,6 +495,7 @@ function startRound(mode, stage) {
   app.session.onEvent(onSessionEvent);
   $('#btn-undo').hidden = !(mode === 'practice' || mode === 'learn');
   $('#btn-claim').disabled = true;
+  $('#btn-call').disabled = false; // may have been left disabled by a hosted round
   $('#hint-text').textContent = '';
   buildCardDom();
   showScreen('play');
@@ -512,6 +515,8 @@ function startRound(mode, stage) {
 }
 
 function countdown(done) {
+  const session = app.session;
+  app.countdownSession = session;
   setPhase('countdown');
   const holder = $('#canvas-holder');
   const el = document.createElement('div');
@@ -522,8 +527,9 @@ function countdown(done) {
   const seq = ['3', '2', '1', 'Go'];
   let i = 0;
   const step = () => {
+    if (app.session !== session) { el.remove(); return; }
     if (app.gamePhase === 'paused') { setTimeout(step, 300); return; }
-    if (i >= seq.length) { el.remove(); done(); return; }
+    if (i >= seq.length) { el.remove(); app.countdownSession = null; done(); return; }
     el.textContent = seq[i];
     announce(seq[i]);
     audio.event('tick');
@@ -534,11 +540,24 @@ function countdown(done) {
 }
 
 // ---------------------------------------------------------------- card DOM
+// The local player is 'you' offline; in hosted rounds it is the server-assigned
+// guest id, which is not necessarily the first seat.
+function meId() {
+  return (app.mode === 'hosted' && app.hosted) ? app.hosted.playerId : 'you';
+}
+function mePlayer(state) {
+  return state.players.find(p => p.id === meId()) || state.players[0];
+}
+function markCell(cell) {
+  if (app.mode === 'hosted') hostedMark(cell);
+  else tryMarkCell(cell);
+}
+
 function buildCardDom() {
   const grid = $('#card-grid');
   grid.innerHTML = '';
   const state = app.session.state;
-  const me = state.players[0];
+  const me = mePlayer(state);
   for (let i = 0; i < CELLS; i++) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -551,7 +570,7 @@ function buildCardDom() {
     else {
       b.textContent = String(me.card[i]);
       b.setAttribute('aria-label', `row ${r + 1} column ${c + 1}, number ${me.card[i]}`);
-      b.addEventListener('click', () => tryMarkCell(i));
+      b.addEventListener('click', () => markCell(i));
     }
     b.tabIndex = i === app.focusCell ? 0 : -1;
     grid.appendChild(b);
@@ -579,6 +598,7 @@ function updatePatternHints() {
 // ---------------------------------------------------------------- play loop
 function scheduleNextCall() {
   clearTimeout(app.callTimer);
+  if (app.mode === 'hosted') return; // the server is the caller in hosted rounds
   const speed = Number(store.data.settings.callSpeed);
   if (speed <= 0 || app.gamePhase !== 'active') { updateCallTimerLabel(); return; }
   app.callTimer = setTimeout(() => doCall(), speed);
@@ -605,6 +625,7 @@ function doCall() {
 
 function tryMarkCell(cell) {
   if (!app.session || app.gamePhase !== 'active') return;
+  if (cell === CENTER) return; // free cell is pre-marked; selecting it is never a penalty
   const ack = 'mark-' + cell + '-' + app.session.state.tick;
   if (app.pendingAck.has(ack)) return;
   app.pendingAck.add(ack);
@@ -640,6 +661,8 @@ function tryClaim() {
 function scheduleBots() {
   // Bots react to the latest call; reaction time scales with skill but their
   // commands are logged like any other, keeping replays verifiable.
+  // Hosted rounds are driven by the server — never simulate bots locally.
+  if (app.mode === 'hosted') return;
   const state = app.session.state;
   for (const p of state.players) {
     if (!p.id.startsWith('lantern-')) continue;
@@ -720,14 +743,14 @@ function endRound(winnerId) {
 function syncPlayUi() {
   if (!app.session) return;
   const state = app.session.state;
-  const me = state.players[0];
+  const me = mePlayer(state);
   const stage = app.stage;
 
   $('#objective-text').textContent = 'Target: ' + PATTERNS[state.pattern].name;
   $('#pattern-desc').textContent = PATTERNS[state.pattern].desc;
   const lines = countLines(me.marks);
   $('#progress-text').textContent = `Calls: ${state.callIndex + 1} · Lines: ${lines} · Marks: ${me.marksMade}`;
-  const sb = app.session.score('you');
+  const sb = app.session.score(me.id);
   $('#score-preview').textContent = `Score so far: ${sb.total} (invalid −${sb.invalidPenalty})`;
 
   // claim button enabled only when a claim is legal (pattern complete)
@@ -735,7 +758,7 @@ function syncPlayUi() {
   $('#btn-claim').disabled = !claimReady;
 
   // card cells
-  const acts = app.session.legalActions('you');
+  const acts = app.session.legalActions(me.id);
   const markAct = acts.find(a => a.type === 'mark');
   const markable = new Set(markAct ? markAct.cells : []);
   $$('#card-grid .card-cell').forEach((el, i) => {
@@ -749,14 +772,14 @@ function syncPlayUi() {
     }
   });
 
-  if (app.renderer && app.renderer.ok) app.renderer.syncCells(state, 'you', markable);
+  if (app.renderer && app.renderer.ok) app.renderer.syncCells(state, me.id, markable);
 
   // roster
   const roster = $('#roster');
   roster.innerHTML = '';
   for (const p of state.players) {
     const li = document.createElement('li');
-    li.textContent = p.id === 'you' ? 'You' : p.id;
+    li.textContent = p.id === me.id ? 'You' : p.id;
     const span = document.createElement('span');
     span.textContent = `${countLines(p.marks)} lines`;
     li.appendChild(span);
@@ -767,14 +790,15 @@ function syncPlayUi() {
 }
 
 // ---------------------------------------------------------------- pause
+let helpReturnPause = false;
 function pauseGame(reason) {
-  if (app.gamePhase !== 'active') return;
+  if (app.gamePhase !== 'active' && app.gamePhase !== 'countdown') return;
   clearTimeout(app.callTimer);
   setPhase('paused', reason || 'paused');
   openModal('Paused', '<p>Take your time. The hall waits.</p>', [
     { label: 'Resume', primary: true, onClick: resumeGame },
     { label: 'Settings', onClick: () => { closeModal(); openSettings(true); } },
-    { label: 'Help', onClick: () => { closeModal(); showScreen('help'); } },
+    { label: 'Help', onClick: () => { helpReturnPause = true; closeModal(); showScreen('help'); } },
     { label: 'Leave round', onClick: () => { closeModal(); abandonRound(); } },
   ]);
 }
@@ -782,6 +806,7 @@ function pauseGame(reason) {
 function resumeGame() {
   closeModal();
   if (!app.session || app.session.ended) { setPhase('active'); return; }
+  if (app.countdownSession === app.session) { setPhase('countdown', 'resumed countdown'); return; }
   setPhase('active', 'resumed');
   scheduleBots();
   scheduleNextCall();
@@ -791,18 +816,23 @@ function abandonRound() {
   clearTimeout(app.callTimer);
   app.botTimers.forEach(clearTimeout);
   app.botTimers = [];
+  settingsReturnPause = false;
+  helpReturnPause = false;
+  leaveHosted();
   app.session = null;
   setPhase('title', 'round left');
   showScreen('title');
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && app.gamePhase === 'active' && app.mode !== 'hosted') pauseGame('tab hidden');
+  if (document.hidden && (app.gamePhase === 'active' || app.gamePhase === 'countdown') && app.mode !== 'hosted') pauseGame('tab hidden');
 });
 
 // ---------------------------------------------------------------- results
 function showResults(winnerId, unlocked) {
   setPhase('results');
+  $('#results-retry').hidden = false;
+  $('#results-replay').hidden = false;
   const state = app.session.state;
   const sb = app.session.score('you');
   const won = state.winner === 'you';
@@ -850,6 +880,7 @@ $('#results-next').addEventListener('click', () => {
     if (next && app.session && app.session.state.winner === 'you') { openSetup('journey', next); return; }
     buildJourneyList(); showScreen('journey'); return;
   }
+  if (app.mode === 'hosted') { leaveHosted(); refreshTitleProgress(); }
   showScreen('title');
 });
 $('#results-replay').addEventListener('click', () => {
@@ -908,8 +939,16 @@ function lessonOnEvent(ev) {
 }
 
 // ---------------------------------------------------------------- hosted play
-function startHosted() {
-  setStatus('Connecting to hall…');
+function leaveHosted() {
+  if (app.hosted) {
+    try { app.hosted.ws.close(); } catch (_) {}
+    app.hosted = null;
+  }
+  if (app.mode === 'hosted') app.mode = null;
+}
+
+function startHosted(reconnect) {
+  setStatus(reconnect ? 'Reconnecting to hall…' : 'Connecting to hall…');
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   let ws;
   try { ws = new WebSocket(proto + '//' + location.host + '/ws'); }
@@ -917,16 +956,27 @@ function startHosted() {
   const timeout = setTimeout(() => { try { ws.close(); } catch (_) {} hostedFail(); }, 4000);
   ws.onopen = () => {
     clearTimeout(timeout);
-    ws.send(JSON.stringify({ type: 'join' }));
+    // reclaim our seat after a reconnect; the server ignores unknown ids
+    const reclaim = app.hosted && app.hosted.playerId;
+    ws.send(JSON.stringify(reclaim ? { type: 'join', playerId: reclaim } : { type: 'join' }));
   };
   ws.onerror = hostedFail;
-  ws.onclose = () => { if (app.mode === 'hosted' && app.gamePhase === 'active') setStatus('Disconnected from hall.'); };
+  ws.onclose = () => {
+    if (app.mode === 'hosted' && app.gamePhase === 'active' && !reconnect) {
+      setStatus('Disconnected from hall. Reconnecting…');
+      setTimeout(() => {
+        if (app.mode === 'hosted' && app.gamePhase === 'active') startHosted(true);
+      }, 1500);
+    }
+  };
   ws.onmessage = (m) => {
     let msg;
     try { msg = JSON.parse(m.data); } catch (_) { return; }
+    // ignore frames arriving after we left the hosted round (socket closing)
+    if (msg.type !== 'joined' && (!app.session || app.mode !== 'hosted')) return;
     if (msg.type === 'joined') {
       app.mode = 'hosted';
-      app.hosted = { ws, playerId: msg.playerId, roomId: msg.roomId };
+      app.hosted = { ws, playerId: msg.playerId, roomId: msg.roomId, spectator: !!msg.spectator };
       app.stage = msg.stage;
       // mirror snapshots into a read-only session-shaped object for the UI
       app.session = hostedSessionFacade(msg);
@@ -937,6 +987,7 @@ function startHosted() {
       if (!app.renderer) app.renderer = new HallRenderer($('#canvas-holder'));
       if (app.renderer.ok) { app.renderer.onCellPick = (cell) => hostedMark(cell); app.renderer.resize(); }
       setPhase('active', 'hosted round');
+      if (msg.spectator) setStatus('Spectating this round — you will be seated for the next one.');
       if (msg.whileAway) setStatus(msg.whileAway);
       syncPlayUi();
       const last = app.session.state.currentCall;
@@ -954,9 +1005,7 @@ function startHosted() {
         const winner = app.session.state.winner;
         setPhase('resolving');
         setTimeout(() => {
-          // adapt hosted results into the results screen
-          app.session.score = (id) => hostedScore(app.session.state, id);
-          app.session.ranking = () => hostedRanking(app.session.state);
+          if (!app.session || app.mode !== 'hosted' || !app.hosted) return; // left meanwhile
           showHostedResults(winner);
         }, 900);
       }
@@ -975,13 +1024,13 @@ function startHosted() {
 }
 
 function hostedSessionFacade(msg) {
-  const state = deserializeState(msg.state);
+  // Methods read this.state so snapshot replacement never leaves stale closures.
   return {
-    state,
-    ended: state.phase === 'ended',
-    legalActions: (id) => hostedLegal(state, id),
-    score: (id) => hostedScore(state, id),
-    ranking: () => hostedRanking(state),
+    state: deserializeState(msg.state),
+    get ended() { return this.state.phase === 'ended'; },
+    legalActions(id) { return hostedLegal(this.state, id); },
+    score(id) { return hostedScore(this.state, id); },
+    ranking() { return hostedRanking(this.state); },
     exportReplay: () => msg.replay || {},
     onEvent: () => {},
   };
@@ -999,6 +1048,13 @@ function hostedSend(cmd) {
 }
 function hostedMark(cell) {
   if (app.gamePhase !== 'active') return;
+  if (app.hosted && app.hosted.spectator) {
+    const msg = 'Spectating — you will be seated for the next round.';
+    $('#hint-text').textContent = msg;
+    announce(msg);
+    return;
+  }
+  if (cell === CENTER) return;
   hostedSend({ type: 'mark', cell });
 }
 
@@ -1009,6 +1065,11 @@ function showHostedResults(winner) {
   const won = state.winner === app.hosted.playerId;
   audio.event(won ? 'win' : 'lose');
   const ranking = hostedRanking(state);
+  // Retry would start a broken local round in hosted mode; replay envelopes
+  // are server-owned. Both are hidden for hosted results.
+  $('#results-retry').hidden = true;
+  $('#results-replay').hidden = true;
+  $('#results-next').textContent = 'Continue';
   $('#results-body').innerHTML = `
     <h3>${won ? '🏮 Bingo! You lit the hall.' : (winner || 'The hall') + ' claimed first.'}</h3>
     <p class="muted">Authoritative result from the hall server · Reason: ${state.terminalReason}</p>
@@ -1091,11 +1152,28 @@ $('#settings-reset').addEventListener('click', () => {
   ]);
 });
 
-// Settings "Done" navigates back to pause if we came from there
-$$('#screen-settings [data-nav="title"]').forEach(b => b.addEventListener('click', () => {
+// Settings "Done" navigates back to pause if we came from there. Must swallow
+// the click so the global data-nav handler doesn't also run nav('title'),
+// which would abandon the paused round.
+$$('#screen-settings [data-nav="title"]').forEach(b => b.addEventListener('click', (e) => {
   if (settingsReturnPause && app.session && !app.session.ended) {
+    e.stopPropagation();
+    audio.event('ui');
     settingsReturnPause = false;
     showScreen('play');
+    setPhase('active', 'settings closed');
+    pauseGame();
+  }
+}));
+
+// Help "Back" likewise returns to the pause modal when opened from pause.
+$$('#screen-help [data-nav="title"]').forEach(b => b.addEventListener('click', (e) => {
+  if (helpReturnPause && app.session && !app.session.ended) {
+    e.stopPropagation();
+    audio.event('ui');
+    helpReturnPause = false;
+    showScreen('play');
+    setPhase('active', 'help closed');
     pauseGame();
   }
 }));
@@ -1188,9 +1266,9 @@ $('#btn-claim').addEventListener('click', () => { if (app.mode === 'hosted') hos
 $('#btn-undo').addEventListener('click', () => { if (app.session && app.session.undo()) { audio.event('ui'); syncPlayUi(); } });
 $('#btn-hint').addEventListener('click', () => {
   if (!app.session) return;
-  const acts = app.session.legalActions('you');
+  const acts = app.session.legalActions(meId());
   const mark = acts.find(a => a.type === 'mark');
-  const me = app.session.state.players[0];
+  const me = mePlayer(app.session.state);
   const msg = mark ? `Callable now: ${mark.cells.map(i => me.card[i]).join(', ')}.`
     : patternComplete(me.marks, app.session.state.pattern) ? 'Pattern complete — press Claim!'
     : 'Nothing callable yet. Wait for the next call.';
@@ -1221,10 +1299,10 @@ document.addEventListener('keydown', (e) => {
       case 'ArrowRight': e.preventDefault(); moveFocus(1, 0); return;
       case 'ArrowUp': e.preventDefault(); moveFocus(0, -1); return;
       case 'ArrowDown': e.preventDefault(); moveFocus(0, 1); return;
-      case 'Enter': e.preventDefault(); tryMarkCell(app.focusCell); return;
+      case 'Enter': e.preventDefault(); markCell(app.focusCell); return;
       case ' ':
         e.preventDefault();
-        if (document.activeElement && document.activeElement.classList.contains('card-cell')) tryMarkCell(app.focusCell);
+        if (document.activeElement && document.activeElement.classList.contains('card-cell')) markCell(app.focusCell);
         else if (app.mode !== 'hosted') doCall();
         return;
       case 'c': case 'C': if (app.mode === 'hosted') hostedSend({ type: 'claim' }); else tryClaim(); return;
@@ -1236,6 +1314,11 @@ document.addEventListener('keydown', (e) => {
       default: return;
     }
   } else if (e.key === 'Escape' && app.screen !== 'title') {
+    // route through the pause-aware Back/Done buttons when those flows are active;
+    // preventDefault so the same Escape can't immediately cancel the pause
+    // modal those buttons reopen
+    if (app.screen === 'settings' && settingsReturnPause) { e.preventDefault(); $('#screen-settings [data-nav="title"]').click(); return; }
+    if (app.screen === 'help' && helpReturnPause) { e.preventDefault(); $('#screen-help [data-nav="title"]').click(); return; }
     nav('title');
   }
 });

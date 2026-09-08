@@ -17,6 +17,7 @@ export class Session {
     // opts: {seed, pattern, parCalls, playerIds, meta:{mode, contentId, version}}
     this.meta = opts.meta || { mode: 'practice', contentId: null, version: RULES_VERSION };
     this.state = createGame(opts);
+    this.initialHash = hashState(this.state);
     this.commands = [];   // ordered applied commands
     this.hashes = [];     // [{tick, hash}]
     this.snapshots = [];  // undo stack (serialized states), practice/learn only
@@ -51,6 +52,9 @@ export class Session {
     const prev = this.snapshots.pop();
     this.state = deserialize(prev);
     this.commands.pop();
+    // drop hash checkpoints recorded past the restored tick so an exported
+    // replay after undo still verifies
+    this.hashes = this.hashes.filter(h => h.tick <= this.state.tick);
     this._emit({ type: 'undo' });
     return true;
   }
@@ -74,7 +78,7 @@ export class Session {
       pattern: this.state.pattern,
       parCalls: this.state.parCalls,
       playerIds: this.state.players.map(p => p.id),
-      initialHash: this.hashes.length ? null : null,
+      initialHash: this.initialHash,
       commands: this.commands.slice(),
       hashes: this.hashes.slice(),
       terminal: this.ended ? {
@@ -94,6 +98,9 @@ export class Session {
       seed: envelope.seed, pattern: envelope.pattern, parCalls: envelope.parCalls,
       playerIds: envelope.playerIds, meta: envelope.meta,
     });
+    if (envelope.initialHash && s.initialHash !== envelope.initialHash) {
+      return { ok: false, error: 'initial-hash-mismatch' };
+    }
     for (const cmd of envelope.commands) {
       const { state, events } = applyCommand(s.state, cmd);
       void events;

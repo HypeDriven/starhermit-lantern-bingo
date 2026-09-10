@@ -1,6 +1,7 @@
 # SFX manifest — lantern-bingo
 
 Generated with MOSS-SoundEffect v2.0, 48 kHz mono Opus (96 kbps VBR, loudness-normalized; 100 inference steps).
+`manifest.txt` is the canonical, code-bound manifest; `manifest.json` is the generator input.
 
 | file | event | prompt |
 |---|---|---|
@@ -20,3 +21,5 @@ Generated with MOSS-SoundEffect v2.0, 48 kHz mono Opus (96 kbps VBR, loudness-no
 | lose-ember-fade.opus | lose | A single warm ember pop followed by a low fading gong hum that slowly dies out, quiet and somber, end of a lost round. |
 | tick-clock-tap.opus | tick | A single precise tick of a small mechanical clock escapement, dry wooden click, very short, quiet countdown cue. |
 | tick-wood-tick.opus | tick | A thin bamboo stick tapping once on a hollow wood block, crisp high click with minimal resonance, metronome-like urgency cue. |
+| start-gong-swell.opus | go | A short warm gong swell rising into a bright shimmer, signalling the start of a festival round, one soft mallet strike with a blooming metallic tail, night hall reverb. |
+| achieve-bell-bloom.opus | achievement | A small sparkling bloom of two tuned hand bells with a soft glittering tail, a modest reward flourish for unlocking a badge, warm and intimate, no fanfare brass. |

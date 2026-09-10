@@ -532,7 +532,7 @@ function countdown(done) {
     if (i >= seq.length) { el.remove(); app.countdownSession = null; done(); return; }
     el.textContent = seq[i];
     announce(seq[i]);
-    audio.event('tick');
+    audio.event(i === seq.length - 1 ? 'go' : 'tick');
     i++;
     setTimeout(step, store.data.settings.reducedMotion ? 500 : 750);
   };
@@ -859,6 +859,7 @@ function showResults(winnerId, unlocked) {
     <h4>Next</h4>
     <p class="muted">${nextRecommendation()}</p>`;
   $('#results-next').textContent = app.mode === 'journey' && won ? 'Next stage' : 'Continue';
+  if (unlocked.length) setTimeout(() => audio.event('achievement'), 450);
   showScreen('results');
   announce(won ? 'You won the round' : 'Round over');
 }

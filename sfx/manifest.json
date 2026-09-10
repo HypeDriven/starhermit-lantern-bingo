@@ -94,5 +94,17 @@
     "seconds": 1,
     "prompt": "A thin bamboo stick tapping once on a hollow wood block, crisp high click with minimal resonance, metronome-like urgency cue.",
     "event": "tick"
+  },
+  {
+    "name": "start-gong-swell",
+    "seconds": 2,
+    "prompt": "A short warm gong swell rising into a bright shimmer, signalling the start of a festival round, one soft mallet strike with a blooming metallic tail, night hall reverb.",
+    "event": "go"
+  },
+  {
+    "name": "achieve-bell-bloom",
+    "seconds": 2,
+    "prompt": "A small sparkling bloom of two tuned hand bells with a soft glittering tail, a modest reward flourish for unlocking a badge, warm and intimate, no fanfare brass.",
+    "event": "achievement"
   }
 ]

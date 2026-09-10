@@ -12,6 +12,7 @@ import { mulberry32 } from './rules.js';
 const SFX_CAPTIONS = {
   ui: 'tap', call: 'number called', mark: 'marked', invalid: 'not allowed',
   line: 'line complete', win: 'bingo! round won', lose: 'round lost',
+  go: 'round begins', achievement: 'achievement unlocked',
 };
 
 export class AudioEngine {
@@ -159,6 +160,15 @@ export class AudioEngine {
         this._caption('round lost');
         break;
       case 'tick': this._tone('effects', 900, 0.03, 'square', 0.05); break;
+      case 'go':
+        this._tone('music', 196, 0.5, 'sine', 0.22);
+        this._tone('music', 392 * v, 0.4, 'triangle', 0.14, 0.02);
+        this._caption('round begins');
+        break;
+      case 'achievement':
+        [784, 1047].forEach((f, i) => this._tone('effects', f * v, 0.18, 'triangle', 0.18, i * 0.12));
+        this._caption('achievement unlocked');
+        break;
       default: break;
     }
   }

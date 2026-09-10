@@ -1,0 +1,24 @@
+# Lantern Bingo — canonical SFX manifest.
+# Format: file | event id | description of the sound | usage context
+# Event ids are the argument to AudioEngine.event(type) in js/audio.js; each id has two
+# interchangeable variants picked by the seeded variant RNG. Every event also has a
+# synthesized WebAudio fallback, so the game is fully audible if a clip fails to load.
+
+ui-lantern-tap.opus | ui | A short soft fingertip tap on a paper lantern shell, gentle muted papery thump with a faint bamboo rattle, dry and close, no reverb tail. | Menu, tray and modal button presses; every nav() call and modal action fires audio.event("ui").
+ui-menu-select.opus | ui | A light wooden clave click paired with a tiny brass bell ping, crisp and friendly UI confirmation, short decay, intimate hall acoustics. | Menu, tray and modal button presses; every nav() call and modal action fires audio.event("ui").
+call-ball-draw.opus | call | A small wooden bingo ball rattling up a bamboo chute and landing with a hollow knock, followed by a soft announce chime, warm hall ambience. | A ball is drawn — doCall() locally, or a hosted snapshot whose currentCall changed.
+call-number-chime.opus | call | Two gentle struck notes on a small brass singing bowl, rising pitch, clear ringing tone that announces a drawn number, soft room reverb. | A ball is drawn — doCall() locally, or a hosted snapshot whose currentCall changed.
+mark-paper-stamp.opus | mark | A round rubber stamp pressing firmly onto a paper card, soft thud with an inky squelch and slight paper fiber texture, single decisive stamp. | A cell is legally marked through the DOM grid, the 3D raycast pick, or Enter/Space.
+mark-ink-dab.opus | mark | A felt-tip bingo dauber dabbing once onto cardboard, wet inky dot sound with a soft fibrous press, short and satisfying. | A cell is legally marked through the DOM grid, the 3D raycast pick, or Enter/Space.
+invalid-wood-thud.opus | invalid | A dull muffled knock on a thick wooden table, low and discouraging, no ring, clearly signaling a rejected action. | Rejected action: number-not-called, already-marked, false claim, or a server "rejected" frame.
+invalid-brush-scratch.opus | invalid | A dry brush bristle scratch across rough paper, one quick downward stroke, slightly harsh, signaling something not allowed. | Rejected action: number-not-called, already-marked, false claim, or a server "rejected" frame.
+line-lantern-glow.opus | line | A warm rising shimmer of small tuned metal chimes, three ascending bright notes with a glowing whoosh of a paper lantern flaring up gently. | A "lines" event names the local player after a mark completes a new row/column/diagonal.
+line-chime-rise.opus | line | Three ascending struck glass chime notes, each brighter than the last, celebratory but small, gentle hall reverb tail. | A "lines" event names the local player after a mark completes a new row/column/diagonal.
+win-festival-fanfare.opus | win | A short festive fanfare of small temple bells and a bamboo flute flourish, joyful rising melody ending on a bright gong shimmer, night market celebration. | Local player claims the target pattern first; endRound()/showHostedResults() with won=true.
+win-bingo-bells.opus | win | A cheerful cascade of brass hand bells ringing in a quick ascending pattern, ending with a resonant small gong strike and sparkling decay. | Local player claims the target pattern first; endRound()/showHostedResults() with won=true.
+lose-paper-sigh.opus | lose | A soft descending sigh made of rustling paper and a low flute note falling in pitch, gentle disappointment, no harshness. | Round ends with another lantern claiming first, or the round is otherwise lost.
+lose-ember-fade.opus | lose | A single warm ember pop followed by a low fading gong hum that slowly dies out, quiet and somber, end of a lost round. | Round ends with another lantern claiming first, or the round is otherwise lost.
+tick-clock-tap.opus | tick | A single precise tick of a small mechanical clock escapement, dry wooden click, very short, quiet countdown cue. | Each of the "3", "2", "1" countdown beats before a round goes active.
+tick-wood-tick.opus | tick | A thin bamboo stick tapping once on a hollow wood block, crisp high click with minimal resonance, metronome-like urgency cue. | Each of the "3", "2", "1" countdown beats before a round goes active.
+start-gong-swell.opus | go | A short warm gong swell rising into a bright shimmer, signalling the start of a festival round, one soft mallet strike with a blooming metallic tail, night hall reverb. | The final "Go" countdown beat as the round opens and the caller starts.
+achieve-bell-bloom.opus | achievement | A small sparkling bloom of two tuned hand bells with a soft glittering tail, a modest reward flourish for unlocking a badge, warm and intimate, no fanfare brass. | Fired 450 ms into the results screen when at least one achievement unlocked this round.

@@ -17,7 +17,7 @@ pattern close, and slam CLAIM before the other lanterns do.
 | Session | 3–9 minutes per round (`expectedMinutes` on every content item); a Journey sitting is 2–4 rounds |
 | Platforms | Desktop and mobile browsers, portrait and landscape; no install, no build step |
 | Rendering | A three.js hall (`js/three.module.js`, r185, vendored) as decorative depth **behind** a DOM `<button>` grid that is the authoritative interaction surface. The game is fully playable with WebGL absent. |
-| Persistence | `localStorage['lantern-bingo-v1']`, FNV-1a checksummed |
+| Persistence | `localStorage['lantern-bingo-v1']`, FNV-1a checksummed (offline cache); hosted mode mirrors the same doc to the StarHermit cloud-save slot |
 
 ### File map
 
@@ -29,11 +29,13 @@ pattern close, and slam CLAIM before the other lanterns do.
 | `js/session.js` | `Session` — the only mutable holder of rules state; command log, undo snapshots, replay envelope + `verifyReplay`, `botCommands`. |
 | `js/content.js` | `THEMES`, `LESSONS`, 40 `JOURNEY_STAGES`, 4 `CHALLENGES`, `dailyFor(dateISO)`, and the offline `validateContent` simulator. |
 | `js/audio.js` | `AudioEngine`: four gain buses, sampled-clip loader over `sfx/manifest.json`, seeded synth fallback per event, caption emission. |
-| `js/game.js` | Everything the player touches: `HallRenderer`, screen state machine, card DOM, call loop, bots, results, settings, hosted WebSocket client, keyboard. |
-| `server.js` | StarHermit `server=` script: static host, `/api/v1/time`, `/api/v1/daily`, and a dependency-free RFC6455 WebSocket hall. |
+| `js/game.js` | Everything the player touches: `HallRenderer`, screen state machine, card DOM, call loop, bots, results, settings, hosted hall client (rooms + legacy dev `/ws`), keyboard. |
+| `js/platform.js` | StarHermit adapter: launch-token read/strip + JWT decode, Bearer api helper, 45-min token refresh, profile nickname, cloud-save mirror (stored-zip + base64), sync status. No-op without a token. |
+| `js/hallnet.js` | Realtime-rooms hall: REST lobby (quick-join/create/open/leave/result/mine), binary frame codec (server-stamped 16-byte sender prefix), guest throttles, and `HallHost` — the host-side caller/rounds runner. |
+| `server.js` | StarHermit `server=` script: static host, a dev-only `/api/v1/time` clock probe, and a dependency-free RFC6455 WebSocket hall for local play (no token). |
 | `sfx/` | 18 Opus one-shots + `manifest.txt` (canonical) / `manifest.json` (loader + generator input) / `manifest.md`. |
 | `assets/` | `title-hall.webp`, `results-lantern.webp` key art. |
-| `tests/` | `rules.test.js`, `session.test.js` (`npm test`), `e2e.mjs` (real-UI playthrough), `validate-content.js`, plus older smoke harnesses. |
+| `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js` (`npm test`), `e2e.mjs` (real-UI playthrough), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, plus older smoke harnesses. |
 
 ---
 
@@ -185,9 +187,9 @@ restored tick so an exported replay still verifies. The Undo button is shown onl
 | Practice / **Play** | `data-nav="play-quick"` (Normal) or the Practice picker | `practiceStage(easy\|normal\|hard)`, fresh random seed | no | yes | local, `callSpeed` |
 | Learn | Learn list | 3 `LESSONS`, 0 bots, manual calls only | no | yes | player |
 | Journey | Journey list | 40 authored stages | yes | no | local |
-| Daily | Daily button | `dailyFor(day)`, day from `/api/v1/time` with a UTC fallback | yes | no | local |
+| Daily | Daily button | `dailyFor(day)`, local UTC day | yes | no | local |
 | Challenge | Challenge picker | 4 constrained rounds | yes | no | local |
-| Hosted | Hosted Play | `hosted-<day>` derived from the daily | server-owned | no | **server**, 4 s fixed |
+| Hosted | Hosted Play | realtime room (platform) or the dev server hall (local) | host-owned | no | **host client**, 4 s fixed |
 
 **Practice difficulties:** easy = `any-line`, 1 bot @ 0.40 skill, par 42; normal = `two-lines`,
 2 bots @ 0.60, par 58; hard = `frame`, 3 bots @ 0.80, par 70.
@@ -402,22 +404,35 @@ German and French expansion fit without a new breakpoint).
 `cover=coverart.png`, per https://wiki.starhermit.com/ conventions.
 
 **Used:**
-- **Server script.** `server.js` is the platform-launched host: static distribution, `/api/v1/time`
-  (the daily-boundary clock, round-trip corrected client-side), `/api/v1/daily`, and `/ws`.
-- **Sessions / hosted rooms.** One room (`hall-1`, 4 seats) fills empty seats with bots, seats
-  humans on join, and spectates a joiner who arrives mid-round rather than wiping it. Guests get a
-  server-assigned `guest-N` id that the client stores and re-sends to reclaim its seat after a
-  reconnect (the client retries once after 1.5 s). Disconnected members without a socket are pruned
-  when a fresh round starts.
-- **Authoritative results.** The server owns rules state, forces `player` identity onto every
-  command, bounds-checks cells, rejects duplicate command ids, rate-limits to 30 messages per 10 s
-  per socket, caps frames at 1 MiB, and broadcasts `serialize(state)` snapshots. Hosted results are
-  rendered from the server snapshot, with Retry and Copy Replay hidden because the envelope is
-  server-owned.
+- **Launch token + identity.** Hosted mode activates iff `#game_token=<jwt>` was read from the
+  URL fragment (read once, then stripped; `?token=`/`?launch=` query fallbacks remain for local
+  dev). `sub`/`game_scope` are base64url-decoded; every `/api/v1` call carries
+  `Authorization: Bearer`, and the token is re-minted every 45 min via
+  `POST /api/v1/games/{slug}/launch-token` (60 s retry on failure). The account nickname comes
+  from `GET /api/v1/users/{sub}/profile` (never `/api/v1/me`, never usernames; `"Player "+id8`
+  fallback) and is shown on the title screen next to the cloud sync status.
+- **Cloud save.** The checksummed localStorage doc is mirrored to
+  `GET/PUT /api/v1/me/cloud-saves/lantern-bingo` (zip+base64, stored entries). Remote wins on
+  boot; saves debounce ~2 s and flush on `pagehide`/hidden-`visibilitychange`; localStorage stays
+  the offline cache.
+- **Hosted halls via realtime rooms.** With a token, Hosted Play quick-joins (or creates and
+  opens) a StarHermit realtime room and connects to `/ws/v1/realtime?roomId=…&access_token=…`.
+  The room's host client runs the caller/rounds with the same Session + bots as local play
+  (`js/hallnet.js` `HallHost`); guests send their existing mark/claim commands as binary frames
+  (guest→host; the relay stamps the 16-byte sender id; host→everyone snapshots). Mid-round
+  joiners spectate until the next round; the host posts `POST /rooms/{id}/result` and rounds
+  restart on a 15 s grace. Without a token, Hosted Play keeps using the repo's own `server.js`
+  hall over `/ws` (local dev only — that protocol is unreachable on-platform).
+- **Dev clock probe.** `server.js` still serves `/api/v1/time` for older local checkouts; the
+  client no longer calls it (the daily boundary is local UTC, and the old `/api/v1/daily` route
+  is removed — it was a fabricated platform route).
+
 - **Cover art.** `coverart.png` (1200×675).
 
-**Not used:** platform identity/profiles (progress is device-local), leaderboards, achievements as a
-platform service (they are local), and invitations/matchmaking beyond the single public hall.
+**Not used:** leaderboards (personal bests stay local + cloud-mirrored), achievements as a
+platform service (they are local, part of the cloud-saved doc — `server.js` is a standalone
+Node host, not a Jint game script, so there is no script-owned unlock path), and friend
+invites/matchmaking beyond quick-join.
 
 ---
 
@@ -439,7 +454,9 @@ on the clipboard (with a `prompt()` fallback).
 **Persistence.** One `localStorage` key holds `{payload, checksum}`; a checksum mismatch or any
 parse error silently restores defaults rather than throwing. Saved: all settings, `journeyDone`,
 `lessonsDone`, `bestScores` per content id, `dailyHistory` per day, achievements, `gamesPlayed`.
-Reset progress clears progress only and keeps settings.
+Reset progress clears progress only and keeps settings. In hosted mode the same doc is mirrored
+to the platform cloud-save slot (zip+base64): remote wins on boot, local writes debounce ~2 s to
+a PUT, and `pagehide` flushes pending saves. localStorage remains the offline cache.
 
 **Rendering budget.** Quality tiers cap device pixel ratio and lantern count: low = DPR 1 / 12
 lanterns / no sway, medium = DPR 1.5 / 24 / sway, high = DPR 2 / 40 / sway + shadows. Lanterns are
@@ -449,8 +466,11 @@ a single `InstancedMesh`; the call number is drawn into one 128×128 `CanvasText
 
 **Failure paths.** No WebGL → an explanatory paragraph in the canvas holder and a fully playable
 card. Context lost → `preventDefault()` plus a reload message; progress is already saved. No hall
-server → "Hosted play is unavailable (no hall server). Try Practice instead." Offline
-`/api/v1/time` → local UTC for the daily. Missing SFX clip → synth fallback.
+available → "Hosted play is unavailable right now. Try Practice instead." (hosted mode off or a
+rooms failure). Offline `/api/v1` → hosted features degrade to local play; the cloud slot is
+skipped entirely without a token. Hosted rooms socket drop mid-round → one reconnect attempt via
+`GET /rooms/mine`, then the honest unavailable message; the host leaving closes the hall for
+everyone. Missing SFX clip → synth fallback.
 
 **How the e2e test drives the real UI.** `tests/e2e.mjs` serves the repo over an ephemeral port and
 drives headless Chrome through `playwright-core`. It only ever clicks visible elements —
@@ -464,7 +484,7 @@ full flow; any `pageerror` or non-noise `console.error` fails the run.
 
 ## 14. Testing and acceptance criteria
 
-`npm test` runs 26 `node --test` cases with zero dependencies:
+`npm test` runs 47 `node --test` cases with zero dependencies:
 
 - **`tests/rules.test.js` (16).** RNG determinism; card column ranges, uniqueness and free centre;
   called-set growth; `legalActions` matching the called set; invalid marks and false claims scoring
@@ -476,12 +496,26 @@ full flow; any `pageerror` or non-noise `console.error` fails the run.
   golden easy/medium/hard sessions terminate with valid winners; all 44 content items pass the
   offline validator; Journey has 40 unique ids and seeds; the daily is stable per day and differs
   across days; challenges validate.
+- **`tests/platform.test.js` (13).** Stored-zip structure + strict-reader round-trip; base64 helpers;
+  JWT decode; fragment read-once/strip + query fallback; offline = zero API activity; Bearer on
+  every call; 45-min refresh swap + 60 s retry; nickname preference/fallback (username never
+  shown); cloud debounce/flush/zip payload; remote-preferred load (zip bytes, base64 JSON, 404).
+- **`tests/hallnet.test.js` (8).** Frame codec round-trip + caps; socket identity harvest
+  (room/roster/whoami); guest 30 msg/s throttle; host seating + bot fill; mid-round spectator →
+  next-round seat; forced-identity + bounds validation + idempotent duplicates; authoritative call
+  cadence with matching snapshot hash; round-end restart; seat retention across an absent guest.
 
 `npm run validate` runs the same offline validator standalone (44 items, 0 failures): it plays a
 perfect player through each stage and asserts the pattern is reachable within 75 calls and that
 `parCalls` is not more than 2× off the measured need.
 
-`npm run test:e2e` runs the playthrough described in §13.
+`npm run test:e2e` runs the playthrough described in §13. `node tests/hosted-smoke.mjs` drives
+the real UI in Chrome against a mock platform with a launch token (fragment strip, account line,
+debounced cloud PUT, zero console errors). `node tests/hall-rooms-smoke.mjs` runs a mock
+realtime platform (REST lobby + relay over real sockets) with a `HallHost` host and a guest
+client: create/open/quick-join, seating, authoritative calls, guest commands, validation
+rejections, duplicate-id suppression, result posting, reconnect seat reclaim, and host-departure
+room close.
 
 **QA bar, as checkable statements.**
 
@@ -540,8 +574,12 @@ spheres by design (pillar 5), and there is no humanoid in the game.
    the total.
 4. **Bots do not mis-claim.** Bots only mark and claim correctly, so `claim-too-late` and bot false
    claims are reachable in the rules but essentially never seen in play.
-5. **Single hosted room.** `hall-1` is global, 4 seats, no private invites or matchmaking, and the
-   daily supplies its content. A fifth concurrent player spectates until the next round.
+5. **Hosted halls are host-routed rooms with no live-platform verification.** The rooms REST
+   shapes, roster/presence pushes, and host-assignment rules follow the platform wiki but are
+   parsed defensively (self/host ids come from roster flags or a host whoami echo); only the mock
+   platform in `tests/hall-rooms-smoke.mjs` has run them end-to-end. The host tab backgrounding
+   stalls the caller for all guests (the relay owns no sim). Friend invites and matchmaking beyond
+   quick-join are not implemented.
 6. **Deck exhaustion has no ceremony.** If 75 calls pass with no winner the round stays active with
    `call` illegal; the player must leave via Pause. There is no "nobody claimed" results screen.
 7. **Achievement counters are session-scoped.** `achievementCtx.linesTotal` and `winStreak` reset on

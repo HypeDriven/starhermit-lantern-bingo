@@ -14,9 +14,20 @@ import {
   JOURNEY_STAGES, CHALLENGES, LESSONS, THEMES, dailyFor, CONTENT_VERSION,
 } from './content.js';
 import { AudioEngine } from './audio.js';
+import { createPlatform } from './platform.js';
+import { RoomsClient, HallHost } from './hallnet.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+// ---------------------------------------------------------------- platform
+// StarHermit hosted mode: active iff a launch token was read from the URL
+// fragment. Same-origin /api/v1 calls only; the cloud slot mirrors the
+// localStorage save (which stays the offline cache).
+const platform = createPlatform({
+  onPageHide: (fn) => window.addEventListener('pagehide', fn),
+});
+platform.onSync(() => refreshAccountLine());
 
 // ---------------------------------------------------------------- persistence
 const SAVE_KEY = 'lantern-bingo-v1';
@@ -58,9 +69,23 @@ const store = {
       }
     } catch (_) { /* corrupted storage: fall back to defaults */ }
   },
-  save() {
+  _writeLocal() {
     const payload = JSON.stringify(this.data);
     try { localStorage.setItem(SAVE_KEY, JSON.stringify({ payload, checksum: checksum(payload) })); } catch (_) {}
+  },
+  save() {
+    this._writeLocal();
+    if (platform.hosted) platform.pushCloud(this.data); // debounced mirror
+  },
+  // Remote-preferred cloud load: a valid remote doc replaces local data and
+  // is re-written to localStorage so the cache always mirrors the cloud.
+  adoptRemote(remote) {
+    if (!remote || remote.version !== 1) return false;
+    this.data = { ...defaultSave(), ...remote,
+      settings: { ...defaultSave().settings, ...remote.settings },
+      progress: { ...defaultSave().progress, ...remote.progress } };
+    this._writeLocal();
+    return true;
   },
 };
 
@@ -779,7 +804,7 @@ function syncPlayUi() {
   roster.innerHTML = '';
   for (const p of state.players) {
     const li = document.createElement('li');
-    li.textContent = p.id === me.id ? 'You' : p.id;
+    li.textContent = p.id === me.id ? 'You' : hostedName(p.id);
     const span = document.createElement('span');
     span.textContent = `${countLines(p.marks)} lines`;
     li.appendChild(span);
@@ -825,7 +850,9 @@ function abandonRound() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && (app.gamePhase === 'active' || app.gamePhase === 'countdown') && app.mode !== 'hosted') pauseGame('tab hidden');
+  if (!document.hidden) return;
+  platform.flushCloud(); // flush the debounced cloud mirror before backgrounding
+  if ((app.gamePhase === 'active' || app.gamePhase === 'countdown') && app.mode !== 'hosted') pauseGame('tab hidden');
 });
 
 // ---------------------------------------------------------------- results
@@ -940,15 +967,241 @@ function lessonOnEvent(ev) {
 }
 
 // ---------------------------------------------------------------- hosted play
+// Two transports, one hall protocol:
+//  - hosted (a launch token was read): StarHermit realtime rooms, host-routed.
+//    The room's host client runs the caller/rounds and broadcasts the same
+//    JSON messages the repo's own hall server used; guests send their
+//    existing mark/claim commands as binary frames (guest→host).
+//  - offline (no token): the repo's own server.js hall over /ws (local dev).
+let hallHost = null;   // HallHost instance while this client hosts the room
+let roomsClient = null;
+
 function leaveHosted() {
+  if (hallHost) { try { hallHost.stop(); } catch (_) {} hallHost = null; }
+  app.joiningHall = false;
   if (app.hosted) {
-    try { app.hosted.ws.close(); } catch (_) {}
+    const sock = app.hosted.socket || app.hosted.ws;
+    app.hosted.socket = null;
+    app.hosted.ws = null;
+    if (app.hosted.roomId && roomsClient) roomsClient.leave(app.hosted.roomId);
+    if (sock) {
+      sock.onclose = null;
+      try { sock.close(); } catch (_) {}
+    }
     app.hosted = null;
   }
   if (app.mode === 'hosted') app.mode = null;
 }
 
 function startHosted(reconnect) {
+  if (platform.hosted) return startHostedRooms(reconnect);
+  startHostedLegacy(reconnect);
+}
+
+function hostedFail() {
+  setStatus('Hosted play is unavailable right now. Try Practice instead.');
+  announce('Hosted play unavailable');
+}
+
+// -------- hosted via StarHermit realtime rooms (token present)
+async function startHostedRooms(reconnect) {
+  setStatus(reconnect ? 'Reconnecting to hall…' : 'Finding a hall…');
+  try {
+    if (!platform.nickname) await platform.loadProfile();
+    if (!roomsClient) roomsClient = new RoomsClient({ api: platform.api, loc: location });
+    let room = null, created = false;
+    if (reconnect) {
+      const mine = await roomsClient.mine();
+      room = mine.find(r => roomsClient.roomId(r)) || null;
+    }
+    if (!room) ({ room, created } = await roomsClient.quickJoinOrCreate(platform.slug));
+    const roomId = roomsClient.roomId(room);
+    const socket = await roomsClient.connect(roomId, platform.token);
+    socket.observeRoom(room);
+    const selfId = await socket.resolveSelf();
+    if (!selfId) throw new Error('no participant id');
+    socket.onroster = (list) => handleHallRoster(socket, list, selfId);
+    const isHost = (socket.hostId && socket.hostId === selfId) || (!socket.hostId && created);
+    if (isHost) enterHallAsHost(socket, roomId, selfId);
+    else enterHallAsGuest(socket, roomId, selfId, reconnect);
+  } catch (e) {
+    hostedFail();
+  }
+}
+
+function handleHallRoster(socket, list, selfId) {
+  if (app.mode !== 'hosted' || !app.hosted) return;
+  const ids = new Set(list.map(p => String(p && (p.id || p.participantId || p.userId))));
+  if (app.hosted.isHost) {
+    // seat leavers keep their seat until the round ends; prune absent members
+    if (hallHost) for (const pid of hallHost.members.keys()) {
+      if (pid !== selfId && !ids.has(pid)) hallHost.markAbsent(pid);
+    }
+    if (socket.hostId && socket.hostId !== selfId) {
+      setStatus('The hall moved to a new host — returning to the title.');
+      abandonRound();
+    }
+  } else if (socket.hostId && socket.hostId === selfId) {
+    setStatus('The hall host left — returning to the title.');
+    abandonRound();
+  }
+}
+
+function enterHallAsHost(socket, roomId, selfId) {
+  socket.isHost = true;
+  socket.onbinary = ({ from, msg }) => {
+    if (msg && msg.type === 'you-are') return;
+    if (hallHost) hallHost.handleGuestMessage(from, msg);
+  };
+  socket.onclose = () => { if (app.mode === 'hosted') hostedFail(); };
+  app.mode = 'hosted';
+  app.hosted = { isHost: true, socket, roomId, playerId: 'you', spectator: false, seats: null };
+  hallHost = new HallHost({
+    send: (obj) => { try { socket.sendBinary(obj); } catch (_) {} },
+    selfId,
+    nickname: platform.nickname || undefined,
+    onEvent: hostHallEvent,
+    onRoundEnd: hostHallEnded,
+    onRoundStart: hostHallRoundStart,
+  });
+  hostHallRoundStart();
+}
+
+// New round (also the entry point): the host plays seat 'you' locally.
+function hostHallRoundStart() {
+  if (app.mode !== 'hosted' || !app.hosted || !app.hosted.isHost || !hallHost) return;
+  app.stage = hallHost.stage;
+  app.session = hallHost.session;
+  app.focusCell = CENTER;
+  app.hosted.seats = hallHost.seats();
+  app.hosted.spectator = false;
+  $('#btn-undo').hidden = true;
+  $('#btn-call').disabled = true; // the host is the caller, on a fixed 4 s cadence
+  $('#btn-claim').disabled = true;
+  $('#call-display').textContent = '—';
+  $('#hint-text').textContent = '';
+  buildCardDom();
+  showScreen('play');
+  if (!app.renderer) app.renderer = new HallRenderer($('#canvas-holder'));
+  if (app.renderer.ok) {
+    app.renderer.onCellPick = (cell) => hostedMark(cell);
+    app.renderer.applyTheme(hallHost.stage.theme || store.data.settings.theme);
+    app.renderer.resize();
+    app.renderer.showCall(0);
+  }
+  setPhase('active', 'hosted hall — you are the caller');
+  syncPlayUi();
+}
+
+function hostHallEvent(events) {
+  for (const e of events) {
+    if (e.type === 'call') {
+      audio.event('call');
+      const v = hallHost.session.state.currentCall;
+      $('#call-display').textContent = String(v);
+      if (app.renderer && app.renderer.ok) app.renderer.showCall(v);
+      announce('Called ' + v);
+    }
+    if (e.type === 'lines' && e.player === 'you') audio.event('line');
+    if (e.type === 'invalid-claim' && e.player !== 'you') setStatus(hostedName(e.player) + ' made a false claim.');
+  }
+  syncPlayUi();
+}
+
+function hostHallEnded(winner) {
+  setPhase('resolving');
+  if (app.hosted && app.hosted.roomId && roomsClient && hallHost) {
+    roomsClient.postResult(app.hosted.roomId, {
+      winner, stage: hallHost.stage.id, rounds: hallHost.rounds,
+    });
+  }
+  setTimeout(() => {
+    if (!app.session || app.mode !== 'hosted' || !app.hosted || !app.hosted.isHost) return;
+    showHostedResults(winner);
+  }, 900);
+}
+
+function enterHallAsGuest(socket, roomId, selfId, reconnect) {
+  socket.onbinary = ({ msg }) => handleGuestHallMessage(msg, socket, roomId, selfId);
+  app.joiningHall = true;
+  socket.onclose = () => {
+    if (app.mode !== 'hosted') return;
+    if (app.gamePhase === 'active' && !reconnect) {
+      setStatus('Disconnected from hall. Reconnecting…');
+      setTimeout(() => {
+        if (app.mode === 'hosted' && app.gamePhase === 'active') startHostedRooms(true);
+      }, 1500);
+    } else {
+      hostedFail();
+    }
+  };
+  socket.sendBinary({ type: 'join-hall', name: platform.nickname || undefined });
+}
+
+function handleGuestHallMessage(msg, socket, roomId, selfId) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type !== 'seated' && (!app.session || app.mode !== 'hosted' || !app.hosted)) return;
+  if (msg.type === 'seated') {
+    // only apply a seat notice meant for us: our join intent, or a new-round
+    // broadcast while we are a seated guest (never another joiner's `you`)
+    const expected = app.joiningHall || (app.hosted && !app.hosted.isHost);
+    if (!expected) return;
+    if (msg.you && msg.you !== selfId) return;
+    if (app.mode === 'hosted' && (!app.hosted || app.hosted.isHost)) return;
+    app.joiningHall = false;
+    const seats = Array.isArray(msg.seats) ? msg.seats : [];
+    const mine = seats.find(s => s.participantId === selfId);
+    app.mode = 'hosted';
+    app.hosted = {
+      isHost: false, socket, roomId,
+      playerId: mine && mine.playerId ? mine.playerId : null,
+      spectator: !(mine && mine.playerId), seats,
+    };
+    app.stage = msg.stage;
+    // mirror snapshots into a read-only session-shaped object for the UI
+    app.session = hostedSessionFacade({ state: msg.state });
+    $('#btn-undo').hidden = true;
+    $('#btn-call').disabled = true; // host is the caller
+    $('#btn-claim').disabled = true;
+    $('#hint-text').textContent = '';
+    buildCardDom();
+    showScreen('play');
+    if (!app.renderer) app.renderer = new HallRenderer($('#canvas-holder'));
+    if (app.renderer.ok) { app.renderer.onCellPick = (cell) => hostedMark(cell); app.renderer.resize(); }
+    setPhase('active', 'hosted round');
+    if (app.hosted.spectator) setStatus('Spectating this round — you will be seated for the next one.');
+    syncPlayUi();
+    const last = app.session.state.currentCall;
+    if (last) { $('#call-display').textContent = String(last); if (app.renderer.ok) app.renderer.showCall(last); }
+  } else if (msg.type === 'snapshot') {
+    if (app.hosted.isHost) return;
+    const prevCall = app.session.state.currentCall;
+    app.session.state = deserializeState(msg.state);
+    if (app.hosted.seats && Array.isArray(msg.seats)) app.hosted.seats = msg.seats;
+    if (app.session.state.currentCall !== prevCall) {
+      audio.event('call');
+      $('#call-display').textContent = String(app.session.state.currentCall);
+      if (app.renderer.ok) app.renderer.showCall(app.session.state.currentCall);
+      announce('Called ' + app.session.state.currentCall);
+    }
+    if (app.session.state.ended) {
+      const winner = app.session.state.winner;
+      setPhase('resolving');
+      setTimeout(() => {
+        if (!app.session || app.mode !== 'hosted' || !app.hosted || app.hosted.isHost) return; // left meanwhile
+        showHostedResults(winner);
+      }, 900);
+    }
+    syncPlayUi();
+  } else if (msg.type === 'rejected') {
+    if (msg.to && msg.to !== selfId) return;
+    announce('Rejected: ' + msg.reason);
+    $('#hint-text').textContent = msg.reason;
+    audio.event('invalid');
+  }
+}
+
+function startHostedLegacy(reconnect) {
   setStatus(reconnect ? 'Reconnecting to hall…' : 'Connecting to hall…');
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   let ws;
@@ -1043,13 +1296,51 @@ function hostedScore(state, id) { return scoreBreakdown(state, id); }
 function hostedRanking(state) { return state.players.map(p => p.id).sort((a, b) => compareResults(state, a, b)); }
 
 function hostedSend(cmd) {
-  if (app.hosted && app.hosted.ws.readyState === 1) {
+  if (!app.hosted) return;
+  if (app.hosted.isHost) {
+    // the host's own claim lands in the authoritative session directly
+    if (app.gamePhase !== 'active' || !hallHost) return;
+    const r = hallHost.dispatch({ ...cmd, player: 'you' });
+    if (!r.ok) {
+      audio.event('invalid');
+      const msg = 'Pattern not complete yet — false claim −25.';
+      $('#hint-text').textContent = msg;
+      announce(msg);
+    }
+    syncPlayUi();
+    return;
+  }
+  if (app.hosted.socket && app.hosted.socket.ws.readyState === 1) {
+    app.hosted.socket.sendBinary({ type: 'cmd', cmd });
+  } else if (app.hosted.ws && app.hosted.ws.readyState === 1) {
     app.hosted.ws.send(JSON.stringify({ type: 'cmd', cmd }));
   }
 }
 function hostedMark(cell) {
-  if (app.gamePhase !== 'active') return;
-  if (app.hosted && app.hosted.spectator) {
+  if (app.gamePhase !== 'active' || !app.hosted) return;
+  if (app.hosted.isHost) {
+    if (cell === CENTER) return; // free cell is pre-marked; selecting it is never a penalty
+    const ack = 'mark-' + cell + '-' + app.session.state.tick;
+    if (app.pendingAck.has(ack)) return;
+    app.pendingAck.add(ack);
+    setTimeout(() => app.pendingAck.delete(ack), 400);
+    const r = hallHost.dispatch({ type: 'mark', player: 'you', cell });
+    if (!r.ok) {
+      audio.event('invalid');
+      const me = app.session.state.players[0];
+      const msg = r.error === 'already-marked' ? 'Already marked.'
+        : r.error === 'number-not-called' ? `Number ${me.card[cell]} has not been called yet.`
+        : r.error;
+      $('#hint-text').textContent = msg;
+      announce(msg);
+    } else {
+      audio.event('mark');
+      $('#hint-text').textContent = '';
+    }
+    syncPlayUi();
+    return;
+  }
+  if (app.hosted.spectator) {
     const msg = 'Spectating — you will be seated for the next round.';
     $('#hint-text').textContent = msg;
     announce(msg);
@@ -1062,8 +1353,9 @@ function hostedMark(cell) {
 function showHostedResults(winner) {
   setPhase('results');
   const state = app.session.state;
-  const sb = hostedScore(state, app.hosted.playerId);
-  const won = state.winner === app.hosted.playerId;
+  const myId = meId() || state.players[0].id;
+  const sb = hostedScore(state, myId);
+  const won = state.winner === myId;
   audio.event(won ? 'win' : 'lose');
   const ranking = hostedRanking(state);
   // Retry would start a broken local round in hosted mode; replay envelopes
@@ -1072,8 +1364,8 @@ function showHostedResults(winner) {
   $('#results-replay').hidden = true;
   $('#results-next').textContent = 'Continue';
   $('#results-body').innerHTML = `
-    <h3>${won ? '🏮 Bingo! You lit the hall.' : (winner || 'The hall') + ' claimed first.'}</h3>
-    <p class="muted">Authoritative result from the hall server · Reason: ${state.terminalReason}</p>
+    <h3>${won ? '🏮 Bingo! You lit the hall.' : winner ? hostedName(winner) + ' claimed first.' : 'Round ended.'}</h3>
+    <p class="muted">Authoritative result from the hall host · Reason: ${state.terminalReason}</p>
     <table class="score-table">
       <tr><td>Pattern bonus</td><td>+${sb.patternBase}</td></tr>
       <tr><td>Line bonus</td><td>+${sb.lineBonus}</td></tr>
@@ -1082,7 +1374,7 @@ function showHostedResults(winner) {
       <tr class="total"><td>Total</td><td>${sb.total}</td></tr>
     </table>
     <h4>Ranking</h4>
-    <table class="score-table">${ranking.map((id, i) => `<tr><td>${i + 1}. ${id}</td><td>${hostedScore(state, id).total}</td></tr>`).join('')}</table>`;
+    <table class="score-table">${ranking.map((id, i) => `<tr><td>${i + 1}. ${id === myId ? 'You' : hostedName(id)}</td><td>${hostedScore(state, id).total}</td></tr>`).join('')}</table>`;
   showScreen('results');
 }
 
@@ -1238,18 +1530,11 @@ function openChallengePicker() {
     })).concat([{ label: 'Cancel', onClick: closeModal }]));
 }
 
-async function openDaily() {
-  // Synchronize the daily boundary with server time when hosted; fall back to UTC.
-  let day = new Date().toISOString().slice(0, 10);
-  try {
-    const t0 = Date.now();
-    const r = await fetch('/api/v1/time');
-    if (r.ok) {
-      const j = await r.json();
-      const offset = j.now - (t0 + Date.now()) / 2; // round-trip-adjusted
-      day = new Date(Date.now() + offset).toISOString().slice(0, 10);
-    }
-  } catch (_) { /* offline: local UTC is fine */ }
+function openDaily() {
+  // Daily Lantern is seeded by the local UTC day — identical for everyone on
+  // the same day, no server clock needed (the old /api/v1/time probe was a
+  // fabricated platform route and is gone).
+  const day = new Date().toISOString().slice(0, 10);
   const stage = dailyFor(day);
   const played = store.data.progress.dailyHistory[day];
   openSetup('daily', { ...stage, title: stage.title + (played != null ? ` (today's best: ${played})` : '') });
@@ -1259,6 +1544,29 @@ function refreshTitleProgress() {
   const p = store.data.progress;
   $('#title-progress').textContent =
     `Journey ${p.journeyDone.length}/${JOURNEY_STAGES.length} · Achievements ${Object.keys(p.achievements).length}/${Object.keys(ACHIEVEMENTS).length} · Rounds played ${p.gamesPlayed}`;
+}
+
+// Account nickname + cloud sync status (hosted mode only; hidden offline so
+// local play looks exactly as it always has).
+function refreshAccountLine() {
+  const el = $('#account-line');
+  if (!el) return;
+  if (!platform.hosted) { el.hidden = true; return; }
+  el.hidden = false;
+  const statusText = {
+    synced: 'cloud save synced', saving: 'saving…',
+    error: 'cloud save offline', offline: 'cloud save offline',
+  }[platform.syncStatus] || String(platform.syncStatus);
+  el.textContent = `Playing as ${platform.nickname || '…'} · ${statusText}`;
+}
+
+// Seat display name in a hosted hall (host-provided), else the raw id.
+function hostedName(id) {
+  if (app.hosted && app.hosted.seats) {
+    const seat = app.hosted.seats.find(s => s.playerId === id);
+    if (seat && seat.name) return seat.name;
+  }
+  return id === 'you' ? 'You' : id;
 }
 
 // ---------------------------------------------------------------- action tray
@@ -1330,11 +1638,31 @@ function boot() {
   applyAudioSettings();
   applyAccessibility();
   refreshTitleProgress();
+  refreshAccountLine();
   showScreen('title');
   setPhase('title', 'ready');
   // audio contexts need a user gesture; unlock on first interaction
   const unlockAudio = () => { audio.ensure(); audio.startAmbience(); document.removeEventListener('pointerdown', unlockAudio); };
   document.addEventListener('pointerdown', unlockAudio);
+  if (platform.hosted) {
+    // Remote-preferred cloud load: a valid remote save replaces the local
+    // cache; a missing/corrupt remote leaves local play untouched.
+    platform.loadProfile().then(() => {
+      refreshAccountLine();
+      if (hallHost) hallHost.me().name = platform.nickname || hallHost.me().name;
+    });
+    platform.loadCloud().then((remote) => {
+      if (!store.adoptRemote(remote)) return;
+      applyAudioSettings();
+      applyAccessibility();
+      refreshTitleProgress();
+      refreshAccountLine();
+      if (app.renderer && app.renderer.ok) {
+        app.renderer.applyTheme(store.data.settings.theme);
+        app.renderer.applyQuality(store.data.settings.quality);
+      }
+    });
+  }
 }
 
 boot();

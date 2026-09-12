@@ -30,14 +30,10 @@ const MIME = {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/v1/time') {
+    // dev-server-only clock probe (the client no longer calls it; the daily
+    // boundary is local UTC). Kept for older checkouts and manual testing.
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ now: Date.now() }));
-    return;
-  }
-  if (url.pathname === '/api/v1/daily') {
-    const day = new Date().toISOString().slice(0, 10);
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(dailyFor(day)));
     return;
   }
   // static files, confined to ROOT

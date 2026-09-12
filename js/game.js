@@ -543,7 +543,9 @@ function countdown(done) {
   const session = app.session;
   app.countdownSession = session;
   setPhase('countdown');
-  const holder = $('#canvas-holder');
+  // The countdown overlays the card area (the decorative hall may be hidden
+  // on compact layouts).
+  const holder = $('.playfield') || $('#canvas-holder');
   const el = document.createElement('div');
   el.className = 'countdown-num';
   el.setAttribute('role', 'timer');

@@ -125,10 +125,18 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .roster li.winner { color: var(--ok); font-weight: 700; }
 
 .playfield { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; }
+/* Card and call banner come first; the decorative hall takes what height is left
+   (and collapses entirely on short viewports). */
+#call-banner { order: 0; }
+.card-grid { order: 1; }
+.hint-text { order: 2; }
 #canvas-holder {
-  width: min(100%, 640px, 62vh); aspect-ratio: 4 / 3;
+  order: 3;
+  width: min(100%, 640px, calc((100dvh - 420px) * 4 / 3)); aspect-ratio: 4 / 3;
+  min-height: 0;
   border-radius: 14px; overflow: hidden; background: #000;
 }
+@media (max-height: 900px) { #canvas-holder { display: none; } }
 #canvas-holder canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
 
 .call-banner {
@@ -144,7 +152,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* DOM card — the accessible, authoritative interaction surface */
 .card-grid {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
-  width: 100%; max-width: 480px;
+  width: 100%; max-width: min(480px, calc(100dvh - 300px));
 }
 .card-cell {
   aspect-ratio: 1; border: none; border-radius: 10px; cursor: pointer;
@@ -217,11 +225,15 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
   pointer-events: none; text-shadow: 0 4px 24px rgba(0,0,0,.6);
 }
 
-/* Compact desktop / tablet: rails become drawers above and below the playfield */
+/* Compact desktop / tablet: rails become condensed rows above and below the playfield */
 @media (max-width: 1023px) {
   .play-layout { grid-template-columns: 1fr; }
-  .rail { max-width: none; width: 100%; }
+  .rail { max-width: none; width: 100%; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; padding: 6px 10px; }
+  .rail h3 { margin: 0; flex-basis: 100%; font-size: 0.95em; }
+  .rail p { margin: 0; }
   .rail-right { order: 3; }
+  .roster { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
+  #canvas-holder { display: none; }
 }
 
 /* Portrait mobile */
@@ -232,10 +244,17 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
 
 /* Landscape mobile: narrow status rail preserved */
 @media (max-height: 500px) and (orientation: landscape) {
-  .play-layout { grid-template-columns: minmax(120px, 170px) 1fr minmax(120px, 170px); }
-  #canvas-holder { max-width: 40vw; aspect-ratio: 4 / 3; }
-  .card-cell { font-size: clamp(13px, 2vw, 18px); }
+  /* rails beside the card; card height-bounded so the call banner and tray share the viewport */
+  .play-layout { grid-template-columns: minmax(120px, 170px) 1fr minmax(120px, 170px); gap: 8px; }
+  .rail { display: block; padding: 6px 8px; font-size: 0.85em; max-height: calc(100vh - 120px); overflow: auto; }
+  .roster { flex-direction: column; }
+  #canvas-holder { display: none; }
+  .card-grid { max-width: min(480px, calc(100vh - 175px)); gap: 4px; }
+  .card-cell { font-size: clamp(13px, 2vw, 18px); min-width: 36px; min-height: 36px; }
+  .call-banner { font-size: 18px; }
   .game-title { font-size: 20px; }
+  .action-tray { padding: 4px 0; }
+  .tray-btn { min-height: 40px; padding: 4px 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

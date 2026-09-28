@@ -16,6 +16,11 @@ import {
 import { AudioEngine } from './audio.js';
 import { createPlatform } from './platform.js';
 import { RoomsClient, HallHost } from './hallnet.js';
+import {
+  PRESETS, CATEGORIES, SHADOW_MAP, LANTERN_COUNT, detectPreset, resolve, presetTier, choosePreset, describe,
+} from './gfx.js';
+import { GFX_STRINGS, pickLocale } from './gfx-strings.js';
+import { TitleFx } from './title-fx.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -42,7 +47,8 @@ const defaultSave = () => ({
   version: 1,
   settings: {
     volumes: { music: 0.5, effects: 0.8, ambience: 0.4, voice: 0.7 },
-    muted: false, quality: 'medium', theme: 'ember',
+    muted: false, theme: 'ember',
+    graphics: { preset: 'auto' },
     reducedMotion: window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     highContrast: false, largeText: false, leftHanded: false,
     callSpeed: 5000, autoHint: true,
@@ -116,12 +122,134 @@ function applyAudioSettings() {
   audio.setMuted(s.muted);
 }
 
+// ---------------------------------------------------------------- graphics quality
+// Pure model in gfx.js; this section probes the GPU once, owns the adaptive scale and the
+// frame-rate meter, and applies the resolved tiers to the hall, the title and the DOM card.
+const gfxEnv = (() => {
+  let gpu = '';
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      gpu = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+      const lose = gl.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();
+    }
+  } catch (_) { gpu = ''; }
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches &&
+    !window.matchMedia('(any-pointer: fine)').matches;
+  const mobile = coarse || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || '');
+  return { gpu, mobile, detected: detectPreset(gpu, { mobile }) };
+})();
+
+const gfxRuntime = { adaptiveScale: 1, frames: [], fps: 0, postFailed: false };
+
+function currentGfx() {
+  return resolve(store.data.settings.graphics, gfxEnv.detected);
+}
+
+/** Device pixel ratio for a resolved setting: min(dpr, preset cap) × render scale × adaptive. */
+function gfxPixelRatio(g) {
+  return Math.min(window.devicePixelRatio || 1, g.dprCap) * g.scale * gfxRuntime.adaptiveScale;
+}
+
+function fpsMeter(on) {
+  let el = document.getElementById('fps-meter');
+  if (on && !el) {
+    el = document.createElement('div');
+    el.id = 'fps-meter';
+    el.setAttribute('aria-hidden', 'true');
+    document.body.append(el);
+  }
+  if (el) el.hidden = !on;
+}
+
+// Adaptive resolution: average ~90 frames; step down 0.1 (min 0.6) when slow, up 0.05 when fast.
+function gfxFrame(dtMs) {
+  const f = gfxRuntime.frames;
+  f.push(dtMs);
+  if (f.length < 90) return false;
+  const avg = f.reduce((a, b) => a + b, 0) / f.length;
+  f.length = 0;
+  gfxRuntime.fps = 1000 / avg;
+  const g = currentGfx();
+  const el = document.getElementById('fps-meter');
+  if (el && !el.hidden) el.textContent = `${Math.round(gfxRuntime.fps)} fps · ${Math.round(gfxPixelRatio(g) * 100) / 100}×`;
+  if (!g.adaptive) return false;
+  const before = gfxRuntime.adaptiveScale;
+  if (avg > 26) gfxRuntime.adaptiveScale = Math.max(0.6, before - 0.1);
+  else if (avg < 14 && before < 1) gfxRuntime.adaptiveScale = Math.min(1, before + 0.05);
+  return before !== gfxRuntime.adaptiveScale;
+}
+
+let hallPost = null;        // the loaded hall-post.js module
+let hallPostLoading = null;
+function loadHallPost() {
+  if (hallPost || gfxRuntime.postFailed) return Promise.resolve(hallPost);
+  if (!hallPostLoading) {
+    hallPostLoading = import('./hall-post.js')
+      .then((m) => { hallPost = m; return m; })
+      .catch(() => { gfxRuntime.postFailed = true; refreshGfxPanel(); return null; });
+  }
+  return hallPostLoading;
+}
+
 // ---------------------------------------------------------------- renderer
-const QUALITY = {
-  low:    { dpr: 1,    lanterns: 12, shadows: false, sway: false },
-  medium: { dpr: 1.5,  lanterns: 24, shadows: false, sway: true  },
-  high:   { dpr: 2,    lanterns: 40, shadows: true,  sway: true  },
-};
+// Procedural floor texture: lacquered boards in concentric rings with grain (greyscale, so the
+// theme's floor colour still tints it).
+function makeFloorTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d');
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  ctx.fillStyle = '#d8d8d8';
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 1400; i++) { // grain streaks
+    const x = rnd() * 512, y = rnd() * 512, l = 20 + rnd() * 90, v = 190 + Math.floor(rnd() * 60);
+    ctx.strokeStyle = `rgba(${v},${v},${v},0.35)`;
+    ctx.lineWidth = 0.6 + rnd() * 1.4;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + l, y + (rnd() - 0.5) * 3); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(40,40,40,0.55)';
+  ctx.lineWidth = 2;
+  for (let y = 0; y <= 512; y += 64) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke(); }
+  for (let row = 0; row < 8; row++) {
+    const off = (row % 2) * 128;
+    for (let x = off; x <= 512; x += 256) { ctx.beginPath(); ctx.moveTo(x, row * 64); ctx.lineTo(x, row * 64 + 64); ctx.stroke(); }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 3);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// Rounded, bevelled card tile (lies flat, top face at y = 0.08).
+function makeTileGeometry() {
+  const s = 0.29, r = 0.08;
+  const sh = new THREE.Shape();
+  sh.moveTo(-s + r, -s); sh.lineTo(s - r, -s); sh.quadraticCurveTo(s, -s, s, -s + r);
+  sh.lineTo(s, s - r); sh.quadraticCurveTo(s, s, s - r, s); sh.lineTo(-s + r, s);
+  sh.quadraticCurveTo(-s, s, -s, s - r); sh.lineTo(-s, -s + r); sh.quadraticCurveTo(-s, -s, -s + r, -s);
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 4 });
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, 0.02, 0);
+  return geo;
+}
+
+// Paper lantern profile (lathe) — ribbed silhouette for the detailed tier.
+function makeLanternGeometry() {
+  const pts = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12, y = (t - 0.5) * 0.7;
+    const rib = 1 + 0.035 * Math.cos(t * Math.PI * 12);
+    pts.push(new THREE.Vector2(Math.max(0.06, Math.sin(t * Math.PI) * 0.3 * rib + 0.06 * (1 - Math.sin(t * Math.PI))), y));
+  }
+  return new THREE.LatheGeometry(pts, 16);
+}
 
 class HallRenderer {
   constructor(holder) {
@@ -132,27 +260,55 @@ class HallRenderer {
     this.onCellPick = null;
     this._raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
+    this.g = currentGfx();
+    this.size = [0, 0];
+    this.pixelRatio = 0;
+    this.composer = null;
+    this.postKey = null;
     this._build();
   }
 
-  _build() {
+  // (Re)create the WebGL renderer. Canvas MSAA is fixed at context creation, so switching it
+  // swaps the renderer; the scene and its objects are kept.
+  _makeGL() {
+    const aa = this.g.antialias === 'msaa' && !this.g.post;
+    if (this.renderer && this._glAA === aa) return true;
     let renderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'default' });
+      renderer = new THREE.WebGLRenderer({ antialias: aa, powerPreference: 'default' });
     } catch (e) {
-      this._fail('3D graphics are unavailable in this browser. The card below remains fully playable.');
-      return;
+      if (!this.renderer) this._fail('3D graphics are unavailable in this browser. The card below remains fully playable.');
+      return !!this.renderer;
     }
+    if (this.renderer) {
+      this._swapping = true;
+      this._disposePost();
+      if (this.envMap) { this.envMap.dispose(); this.envMap = null; this.scene.environment = null; }
+      this.renderer.dispose();
+      this.renderer.domElement.remove();
+      this._swapping = false;
+    }
+    this._glAA = aa;
     this.renderer = renderer;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     this.holder.appendChild(renderer.domElement);
-
     renderer.domElement.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
+      if (this._swapping || renderer !== this.renderer) return;
       this._fail('Graphics context was lost. Reload the page to restore the 3D hall — your progress is saved.');
     });
+    renderer.domElement.addEventListener('pointerdown', (e) => this._pick(e));
+    this.size = [0, 0];
+    this.pixelRatio = 0;
+    this.postKey = null;
+    return true;
+  }
+
+  _build() {
+    if (!this._makeGL()) return;
 
     this.scene = new THREE.Scene();
     // authored framing constants
@@ -162,59 +318,105 @@ class HallRenderer {
     this.camera.position.copy(this.cameraHome);
     this.camera.lookAt(this.cameraLook);
 
+    // Key light: warm directional with a shadow box fitted tightly around card, ball and pole.
     const key = new THREE.DirectionalLight(0xfff2dd, 3.2);
     key.position.set(4, 8, 5);
-    this.scene.add(key);
+    key.target.position.set(0, 0.6, 1.2);
+    const sc = key.shadow.camera;
+    Object.assign(sc, { left: -3.4, right: 3.4, top: 3.4, bottom: -3.4, near: 4, far: 16 });
+    sc.updateProjectionMatrix();
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
+    key.shadow.radius = 3;
+    this.scene.add(key, key.target);
     this.keyLight = key;
-    this.scene.add(new THREE.HemisphereLight(0x8899bb, 0x443355, 1.6));
+    this.hemi = new THREE.HemisphereLight(0x8899bb, 0x443355, 1.6);
+    this.scene.add(this.hemi);
     // warm glow over the call ball
     const ballLight = new THREE.PointLight(0xffc370, 30, 12, 1.8);
     ballLight.position.set(0, 3.4, 1.5);
+    this._ballLightBase = 30;
     this.scene.add(ballLight);
+    this.ballLight = ballLight;
+    // lantern-row fill from behind, tinted by the theme
+    this.lanternFill = new THREE.PointLight(0xffb454, 8, 14, 1.6);
+    this.lanternFill.position.set(0, 2.2, -3.2);
+    this.scene.add(this.lanternFill);
 
     // floor
+    this.floorTex = null;
     this.floor = new THREE.Mesh(
-      new THREE.CylinderGeometry(7.5, 7.5, 0.2, 48),
+      new THREE.CylinderGeometry(7.5, 7.5, 0.2, 64),
       new THREE.MeshStandardMaterial({ color: 0x2b2135, roughness: 0.9 }));
     this.floor.position.y = -0.1;
+    this.floor.receiveShadow = true;
     this.scene.add(this.floor);
+
+    // lacquered card board under the tiles (detailed tier)
+    this.board = new THREE.Mesh(
+      new THREE.BoxGeometry(3.95, 0.06, 3.95),
+      new THREE.MeshPhysicalMaterial({ color: 0x5a1c1c, roughness: 0.45, clearcoat: 0.8, clearcoatRoughness: 0.2 }));
+    this.board.position.set(0, 0.0, 1.9);
+    this.board.receiveShadow = true;
+    this.scene.add(this.board);
 
     // call ball — the visual hero of the current call
     this.ballCanvas = document.createElement('canvas');
-    this.ballCanvas.width = this.ballCanvas.height = 128;
+    this.ballCanvas.width = this.ballCanvas.height = 256;
     this.ballTexture = new THREE.CanvasTexture(this.ballCanvas);
+    this.ballTexture.colorSpace = THREE.SRGBColorSpace;
     this.ball = new THREE.Mesh(
-      new THREE.SphereGeometry(0.85, 32, 24),
-      new THREE.MeshStandardMaterial({
+      new THREE.SphereGeometry(0.85, 48, 32),
+      new THREE.MeshPhysicalMaterial({
         color: 0xfff4e0, roughness: 0.3, map: this.ballTexture,
         emissive: 0xffffff, emissiveMap: this.ballTexture, emissiveIntensity: 0.85,
       }));
     this.ball.position.set(0, 2.6, 0);
+    this.ball.rotation.y = -Math.PI / 2; // number faces the camera
+    this.ball.castShadow = true;
     this.scene.add(this.ball);
     this.ballPole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05, 0.05, 2.2, 8),
+      new THREE.CylinderGeometry(0.05, 0.05, 2.2, 12),
       new THREE.MeshStandardMaterial({ color: 0x554433, roughness: 0.8 }));
     this.ballPole.position.set(0, 1.0, 0);
+    this.ballPole.castShadow = true;
     this.scene.add(this.ballPole);
 
     // 3D card cells (raycast interaction layer, mirrors the DOM grid)
-    const cellGeo = new THREE.BoxGeometry(0.62, 0.08, 0.62);
+    this.boxGeo = new THREE.BoxGeometry(0.62, 0.08, 0.62);
+    this.boxGeo.translate(0, 0.04, 0);
+    this.tileGeo = null;
     this.cellGroup = new THREE.Group();
     for (let i = 0; i < CELLS; i++) {
       const r = Math.floor(i / GRID), c = i % GRID;
-      const m = new THREE.Mesh(cellGeo, new THREE.MeshStandardMaterial({ color: 0x2b3a67, roughness: 0.6 }));
-      m.position.set((c - 2) * 0.72, 0.04, 1.9 + (r - 2) * 0.72);
+      const m = new THREE.Mesh(this.boxGeo, new THREE.MeshPhysicalMaterial({ color: 0x2b3a67, roughness: 0.6 }));
+      m.position.set((c - 2) * 0.72, 0.0, 1.9 + (r - 2) * 0.72);
+      m.castShadow = true;
+      m.receiveShadow = true;
       m.userData.cell = i;
       this.cellGroup.add(m);
       this.cells.push(m);
     }
     this.scene.add(this.cellGroup);
 
-    this._buildLanterns(QUALITY[store.data.settings.quality].lanterns);
-    this.applyTheme(store.data.settings.theme);
-    this.applyQuality(store.data.settings.quality);
+    // warm dust motes drifting up through the lantern light (animated background only)
+    const motes = 90;
+    const pos = new Float32Array(motes * 3);
+    for (let i = 0; i < motes; i++) {
+      pos[i * 3] = ((i * 73) % 100) / 100 * 12 - 6;
+      pos[i * 3 + 1] = ((i * 37) % 100) / 100 * 5;
+      pos[i * 3 + 2] = ((i * 53) % 100) / 100 * 6 - 3.5;
+    }
+    const moteGeo = new THREE.BufferGeometry();
+    moteGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
+      color: 0xffc98a, size: 0.05, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    this.scene.add(this.motes);
 
-    renderer.domElement.addEventListener('pointerdown', (e) => this._pick(e));
+    this.applyTheme(store.data.settings.theme);
+    this.setGraphics(this.g);
+
     window.addEventListener('resize', () => this.resize());
     this.resize();
 
@@ -224,19 +426,24 @@ class HallRenderer {
     const loop = (ts) => {
       if (!this._running) return;
       requestAnimationFrame(loop);
-      const q = QUALITY[store.data.settings.quality];
-      if (!document.hidden) {
-        const dt = Math.min(0.05, (ts - (this._last || ts)) / 1000);
-        this._last = ts;
-        if (q.sway && !store.data.settings.reducedMotion) this._t += dt;
-        this._animate();
-        renderer.render(this.scene, this.camera);
-      }
+      if (document.hidden) { this._last = 0; return; }
+      const dtMs = this._last ? Math.min(250, ts - this._last) : 16;
+      this._last = ts;
+      // Hidden hall (compact layouts collapse it): skip rendering entirely.
+      if (!this.holder.clientWidth) return;
+      if (this._moving()) this._t += dtMs / 1000;
+      this._animate();
+      this.render(gfxFrame(dtMs));
     };
     requestAnimationFrame(loop);
   }
 
+  _moving() {
+    return this.g.background === 'animated' && !store.data.settings.reducedMotion;
+  }
+
   _fail(msg) {
+    if (this.holder.querySelector('.webgl-fail')) return;
     const p = document.createElement('p');
     p.className = 'webgl-fail';
     p.textContent = msg;
@@ -244,67 +451,208 @@ class HallRenderer {
     this.holder.appendChild(p);
   }
 
-  _buildLanterns(count) {
-    if (this.lanterns) {
-      this.scene.remove(this.lanterns);
-      this.lanterns.geometry.dispose();
-      this.lanterns.material.dispose();
+  _buildLanterns(count, detailed) {
+    for (const k of ['lanterns', 'lanternCaps']) {
+      if (this[k]) { this.scene.remove(this[k]); this[k].geometry.dispose(); this[k].material.dispose(); this[k] = null; }
     }
-    const geo = new THREE.SphereGeometry(0.28, 12, 10);
-    geo.scale(1, 1.25, 1);
+    let geo;
+    if (detailed) geo = makeLanternGeometry();
+    else { geo = new THREE.SphereGeometry(0.28, 12, 10); geo.scale(1, 1.25, 1); }
+    const col = this._lanternColor || 0xffb454;
     const mat = new THREE.MeshStandardMaterial({
-      color: this._lanternColor || 0xffb454,
-      emissive: this._lanternColor || 0xffb454, emissiveIntensity: 1.5, roughness: 0.5,
+      color: col, emissive: col, emissiveIntensity: detailed ? 2.2 : 1.5, roughness: 0.5,
     });
     const inst = new THREE.InstancedMesh(geo, mat, count);
+    let caps = null;
+    if (detailed) {
+      const capGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.06, 10);
+      caps = new THREE.InstancedMesh(capGeo, new THREE.MeshStandardMaterial({ color: 0x2a1a14, roughness: 0.5, metalness: 0.3 }), count * 2);
+    }
     const dummy = new THREE.Object3D();
     this._lanternData = [];
     const rngRows = Math.ceil(count / 8);
     for (let i = 0; i < count; i++) {
-      const row = Math.floor(i / 8), col = i % 8;
-      const x = (col - 3.5) * 1.5 + (row % 2) * 0.75;
+      const row = Math.floor(i / 8), col2 = i % 8;
+      const x = (col2 - 3.5) * 1.5 + (row % 2) * 0.75;
       const z = -1.6 - row * (3.4 / Math.max(1, rngRows));
       const y = 3.5 + ((i * 37) % 10) / 16;
       const phase = (i * 0.77) % (Math.PI * 2);
       this._lanternData.push({ x, y, z, phase });
-      dummy.position.set(x, y, z);
-      dummy.updateMatrix();
-      inst.setMatrixAt(i, dummy.matrix);
     }
-    inst.instanceMatrix.needsUpdate = true;
     this.lanterns = inst;
+    this.lanternCaps = caps;
+    this._placeLanterns(dummy, 0, true);
     this.scene.add(inst);
+    if (caps) this.scene.add(caps);
+  }
+
+  _placeLanterns(dummy, t, force) {
+    if (!this.lanterns) return;
+    for (let i = 0; i < this._lanternData.length; i++) {
+      const d = this._lanternData[i];
+      const x = d.x + (t ? Math.sin(t * 0.6 + d.phase) * 0.08 : 0);
+      const y = d.y + (t ? Math.sin(t * 0.8 + d.phase) * 0.05 : 0);
+      const tilt = t ? Math.sin(t * 0.6 + d.phase) * 0.05 : 0;
+      dummy.position.set(x, y, d.z);
+      dummy.rotation.set(0, 0, tilt);
+      dummy.updateMatrix();
+      this.lanterns.setMatrixAt(i, dummy.matrix);
+      if (this.lanternCaps) {
+        for (const [k, dy] of [[0, 0.36], [1, -0.36]]) {
+          dummy.position.set(x - Math.sin(tilt) * dy, y + dy, d.z);
+          dummy.updateMatrix();
+          this.lanternCaps.setMatrixAt(i * 2 + k, dummy.matrix);
+        }
+      }
+    }
+    this.lanterns.instanceMatrix.needsUpdate = true;
+    if (this.lanternCaps) this.lanternCaps.instanceMatrix.needsUpdate = true;
   }
 
   applyTheme(themeId) {
     const t = THEMES.find(x => x.id === themeId) || THEMES[0];
     this._lanternColor = t.lantern;
+    this._themeId = t.id;
     if (!this.scene) return;
     this.scene.background = new THREE.Color(t.bg);
     this.scene.fog = new THREE.Fog(t.bg, 12, 26);
     this.floor.material.color.setHex(t.floor);
+    if (this.floor.material.map) this.floor.material.color.multiplyScalar(1.3); // texture is mid-grey
+    this.lanternFill.color.setHex(t.lantern);
     if (this.lanterns) {
       this.lanterns.material.color.setHex(t.lantern);
       this.lanterns.material.emissive.setHex(t.lantern);
     }
   }
 
-  applyQuality(q) {
-    const tier = QUALITY[q] || QUALITY.medium;
-    if (!this.renderer) return;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, tier.dpr));
-    this.renderer.shadowMap.enabled = tier.shadows;
-    this.keyLight.castShadow = tier.shadows;
-    if (this.lanterns && this.lanterns.count !== tier.lanterns) this._buildLanterns(tier.lanterns);
+  /** Apply resolved graphics tiers live (no reload). */
+  setGraphics(g) {
+    const key = JSON.stringify(g) + store.data.settings.reducedMotion;
+    if (key === this._gfxKey) return;
+    this._gfxKey = key;
+    this.g = g;
+    if (!this._makeGL()) return;
+    const detailed = g.detail === 'detailed';
+    // shadows
+    const size = SHADOW_MAP[g.shadows];
+    this.renderer.shadowMap.enabled = size > 0;
+    this.keyLight.castShadow = size > 0;
+    if (size > 0 && this.keyLight.shadow.mapSize.x !== size) {
+      this.keyLight.shadow.mapSize.set(size, size);
+      this.keyLight.shadow.map?.dispose();
+      this.keyLight.shadow.map = null;
+    }
+    // lanterns
+    const count = LANTERN_COUNT[g.lanterns];
+    if (!this.lanterns || this.lanterns.count !== count || this._lanternsDetailed !== detailed) {
+      this._buildLanterns(count, detailed);
+      this._lanternsDetailed = detailed;
+    }
+    // surface detail: textured floor, lacquered board, bevelled glossy tiles, brass pole, glossy ball
+    if (detailed && !this.floorTex) this.floorTex = makeFloorTexture();
+    const fm = this.floor.material;
+    fm.map = detailed ? this.floorTex : null;
+    fm.roughness = detailed ? 0.55 : 0.9;
+    fm.metalness = 0;
+    this.board.visible = detailed;
+    if (detailed && !this.tileGeo) this.tileGeo = makeTileGeometry();
+    for (const m of this.cells) {
+      m.geometry = detailed ? this.tileGeo : this.boxGeo;
+      m.material.clearcoat = detailed ? 0.8 : 0;
+      m.material.clearcoatRoughness = 0.15;
+      m.material.roughness = detailed ? 0.42 : 0.6;
+    }
+    const bm = this.ball.material;
+    bm.clearcoat = detailed ? 1 : 0;
+    bm.clearcoatRoughness = 0.08;
+    bm.emissiveIntensity = detailed ? 0.3 : 0.85;
+    const pm = this.ballPole.material;
+    pm.color.setHex(detailed ? 0xb08d57 : 0x554433);
+    pm.metalness = detailed ? 0.85 : 0;
+    pm.roughness = detailed ? 0.32 : 0.8;
+    this.motes.visible = g.background === 'animated';
+    this._ballLightBase = detailed ? 14 : 30;
+    this.ballLight.intensity = this._ballLightBase;
+    this.ballLight.position.set(0, detailed ? 4.2 : 3.4, detailed ? 2.6 : 1.5);
+    this.lanternFill.visible = detailed;
+    // reflections: RoomEnvironment IBL (loaded with the post addons)
+    this._applyReflections();
+    this.applyTheme(this._themeId || store.data.settings.theme);
+    // Materials pick up shadow-map / map / clearcoat changes on recompile.
+    for (const o of [this.floor, this.board, this.ball, this.ballPole, this.lanterns, this.lanternCaps, ...this.cells]) {
+      if (o) o.material.needsUpdate = true;
+    }
+    if (!this._moving()) this._placeLanterns(new THREE.Object3D(), 0, true);
+    this.postKey = null; // rebuild the post chain on the next frame
+    if (g.post || g.reflections === 'on') loadHallPost().then(() => { this.postKey = null; this._applyReflections(); });
     this.resize();
   }
 
-  resize() {
-    if (!this.renderer) return;
+  _applyReflections() {
+    const want = this.g.reflections === 'on' && hallPost;
+    if (want && !this.envMap) {
+      try { this.envMap = hallPost.buildEnvironment(this.renderer); } catch (_) { this.envMap = null; }
+    }
+    this.scene.environment = want ? this.envMap : null;
+    this.scene.environmentIntensity = 0.22;
+    if (!want && this.envMap) { this.envMap.dispose(); this.envMap = null; }
+  }
+
+  _disposePost() {
+    if (this.composer) {
+      try { this.composer.dispose(); } catch (_) { /* already gone */ }
+    }
+    this.composer = null;
+  }
+
+  _buildPost(w, h) {
+    this._disposePost();
+    if (!this.g.post || !hallPost || gfxRuntime.postFailed) return;
+    try {
+      this.composer = hallPost.buildComposer(this.renderer, this.scene, this.camera, this.g, w, h, this.pixelRatio);
+    } catch (_) {
+      // Post-processing is an enhancement: render directly if the chain cannot be built.
+      gfxRuntime.postFailed = true;
+      this.composer = null;
+      refreshGfxPanel();
+    }
+  }
+
+  render(rescale) {
     const w = this.holder.clientWidth || 320, h = this.holder.clientHeight || 240;
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h, false);
+    const ratio = gfxPixelRatio(this.g);
+    if (w !== this.size[0] || h !== this.size[1] || ratio !== this.pixelRatio || rescale || this._needsResize) {
+      this._needsResize = false;
+      this.size = [w, h];
+      this.pixelRatio = ratio;
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setPixelRatio(ratio);
+      this.renderer.setSize(w, h, false);
+    }
+    const key = this.g.post && hallPost ? [this.g.ao, this.g.bloom, this.g.grade, this.g.antialias, w, h, ratio].join('|') : 'none';
+    if (key !== this.postKey) {
+      this.postKey = key;
+      this._buildPost(w, h);
+    }
+    if (this.composer) {
+      try { this.composer.render(); return; } catch (_) {
+        gfxRuntime.postFailed = true;
+        this._disposePost();
+        refreshGfxPanel();
+      }
+    }
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  resize() {
+    this._needsResize = true; // re-measured on the next frame
+  }
+
+  /** Rendered pixel size (for the Graphics summary). */
+  pixels() {
+    if (!this.size[0]) return null;
+    return [Math.round(this.size[0] * this.pixelRatio), Math.round(this.size[1] * this.pixelRatio)];
   }
 
   resetCamera() {
@@ -314,15 +662,19 @@ class HallRenderer {
 
   _animate() {
     const t = this._t;
-    if (this.lanterns && t !== 0) {
-      const dummy = new THREE.Object3D();
-      for (let i = 0; i < this._lanternData.length; i++) {
-        const d = this._lanternData[i];
-        dummy.position.set(d.x + Math.sin(t * 0.6 + d.phase) * 0.08, d.y + Math.sin(t * 0.8 + d.phase) * 0.05, d.z);
-        dummy.updateMatrix();
-        this.lanterns.setMatrixAt(i, dummy.matrix);
+    const dummy = this._dummy || (this._dummy = new THREE.Object3D());
+    if (this.lanterns && t !== 0 && this._moving()) this._placeLanterns(dummy, t);
+    if (this._moving()) {
+      this.ball.position.y = 2.6 + Math.sin(t * 1.1) * 0.04;
+      this.ball.rotation.y = -Math.PI / 2 + Math.sin(t * 0.4) * 0.12;
+      this.ballLight.intensity = this._ballLightBase * (0.94 + 0.06 * Math.sin(t * 7.3) * Math.sin(t * 3.1));
+      const p = this.motes.geometry.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        let y = p.getY(i) + 0.004;
+        if (y > 5) y = 0;
+        p.setY(i, y);
       }
-      this.lanterns.instanceMatrix.needsUpdate = true;
+      p.needsUpdate = true;
     }
     if (this._ballPop > 0) {
       this._ballPop = Math.max(0, this._ballPop - 0.04);
@@ -333,13 +685,18 @@ class HallRenderer {
 
   showCall(value) {
     const ctx = this.ballCanvas.getContext('2d');
+    const S = this.ballCanvas.width;
     ctx.fillStyle = '#fff2dc';
-    ctx.fillRect(0, 0, 128, 128);
+    ctx.fillRect(0, 0, S, S);
     if (value > 0) {
+      // lettered band like a real bingo ball
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(0, S * 0.3, S, S * 0.08);
+      ctx.fillRect(0, S * 0.62, S, S * 0.08);
       ctx.fillStyle = '#1a2040';
-      ctx.font = 'bold 64px "Segoe UI", Arial, sans-serif';
+      ctx.font = `bold ${S / 2}px "Segoe UI", Arial, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(value), 64, 68);
+      ctx.fillText(String(value), S / 2, S * 0.53);
     }
     this.ballTexture.needsUpdate = true;
     this._ballPop = store.data.settings.reducedMotion ? 0 : 1;
@@ -351,7 +708,7 @@ class HallRenderer {
     if (!p) return;
     for (let i = 0; i < CELLS; i++) {
       const mat = this.cells[i].material;
-      if (p.marks[i]) { mat.color.setHex(0xffb454); mat.emissive.setHex(0x442200); }
+      if (p.marks[i]) { mat.color.setHex(0xffb454); mat.emissive.setHex(0x663300); }
       else if (markable && markable.has(i)) { mat.color.setHex(0xffd7a0); mat.emissive.setHex(0x553a00); }
       else { mat.color.setHex(0x2b3a67); mat.emissive.setHex(0x000000); }
     }
@@ -369,6 +726,7 @@ class HallRenderer {
 
   dispose() {
     this._running = false;
+    this._disposePost();
     if (this.renderer) {
       this.renderer.dispose();
       this.renderer.domElement.remove();
@@ -405,6 +763,7 @@ const SCREENS = ['title', 'setup', 'journey', 'learn', 'play', 'results', 'setti
 function showScreen(name) {
   for (const s of SCREENS) $('#screen-' + s).hidden = s !== name;
   app.screen = name;
+  if (name === 'title') titleFx.kick();
   const first = $('#screen-' + name + ' button');
   if (first) first.focus({ preventScroll: true });
 }
@@ -1380,6 +1739,157 @@ function showHostedResults(winner) {
   showScreen('results');
 }
 
+// ---------------------------------------------------------------- graphics settings
+const gfxT = GFX_STRINGS[pickLocale(navigator.languages || [navigator.language])];
+const titleFx = new TitleFx($('#screen-title'), () => app.screen === 'title' && !document.hidden);
+titleFx.onFrame = (dt) => {
+  if (!gfxFrame(dt)) return;
+  const g = currentGfx();
+  titleFx.set(g, store.data.settings.reducedMotion, gfxPixelRatio(g));
+};
+document.addEventListener('visibilitychange', () => titleFx.kick());
+
+function gfxSaved() {
+  const s = store.data.settings;
+  if (!s.graphics || typeof s.graphics !== 'object') s.graphics = { preset: 'auto' };
+  return s.graphics;
+}
+
+/** Apply the saved graphics settings everywhere: hall, title, DOM card, panel. */
+function applyGraphics() {
+  const g = currentGfx();
+  document.body.dataset.gfxPreset = g.preset;
+  document.body.classList.toggle('gfx-detailed', g.detail === 'detailed');
+  document.body.classList.toggle('gfx-animated', g.background === 'animated');
+  document.body.classList.toggle('gfx-bloom', g.bloom === 'on');
+  fpsMeter(g.showFps);
+  titleFx.set(g, store.data.settings.reducedMotion, gfxPixelRatio(g));
+  if (app.renderer && app.renderer.ok) app.renderer.setGraphics(g);
+  refreshGfxPanel();
+}
+
+function gfxOption(value, label) {
+  const o = document.createElement('option');
+  o.value = value; o.textContent = label;
+  return o;
+}
+
+function buildGfxPanel() {
+  const panel = $('#gfx-panel');
+  $('#gfx-legend').textContent = gfxT.graphics;
+  panel.textContent = '';
+  const row = (labelText, control, extra) => {
+    const l = document.createElement('label');
+    const span = document.createElement('span');
+    span.textContent = labelText;
+    l.append(span, control);
+    if (extra) l.append(extra);
+    panel.append(l);
+    return l;
+  };
+  const preset = document.createElement('select');
+  preset.id = 'gfx-preset';
+  preset.dataset.gfx = 'preset';
+  row(gfxT.quality, preset);
+
+  const scale = document.createElement('input');
+  Object.assign(scale, { type: 'range', id: 'gfx-scale', min: '50', max: '200', step: '5' });
+  scale.dataset.gfx = 'render_scale';
+  const scaleOut = document.createElement('output');
+  scaleOut.id = 'gfx-scale-val';
+  scaleOut.className = 'gfx-scale-val';
+  row(gfxT.renderScale, scale, scaleOut).classList.add('gfx-scale-row');
+
+  for (const cat of Object.keys(CATEGORIES)) {
+    const sel = document.createElement('select');
+    sel.id = `gfx-${cat}`;
+    sel.dataset.gfx = 'cat';
+    sel.dataset.gfxCat = cat;
+    row(gfxT.cat[cat], sel);
+  }
+  const check = (id, key, text) => {
+    const l = document.createElement('label');
+    l.className = 'gfx-check';
+    const c = document.createElement('input');
+    Object.assign(c, { type: 'checkbox', id });
+    c.dataset.gfx = key;
+    const span = document.createElement('span');
+    span.textContent = text;
+    l.append(c, span);
+    panel.append(l);
+  };
+  check('gfx-adaptive', 'adaptive', gfxT.adaptive);
+  check('gfx-fps', 'show_fps', gfxT.showFps);
+  const sum = document.createElement('p');
+  sum.id = 'gfx-summary';
+  sum.className = 'gfx-summary muted';
+  sum.setAttribute('aria-live', 'polite');
+  const note = document.createElement('p');
+  note.id = 'gfx-post-note';
+  note.className = 'gfx-note';
+  note.hidden = true;
+  note.textContent = gfxT.postUnavailable;
+  panel.append(sum, note);
+
+  panel.addEventListener('input', onGfxInput);
+  panel.addEventListener('change', onGfxInput);
+}
+
+function onGfxInput(e) {
+  const el = e.target;
+  if (!el.dataset || !el.dataset.gfx) return;
+  // sliders apply while dragging; selects and checkboxes on change
+  if (el.type === 'range' ? e.type !== 'input' : e.type !== 'change') return;
+  let saved = gfxSaved();
+  switch (el.dataset.gfx) {
+    case 'preset': saved = choosePreset(saved, el.value); break;
+    case 'render_scale': saved.render_scale = Number(el.value) / 100; break;
+    case 'adaptive': saved.adaptive = el.checked; gfxRuntime.adaptiveScale = 1; break;
+    case 'show_fps': saved.show_fps = el.checked; break;
+    case 'cat':
+      if (el.value === 'preset') delete saved[el.dataset.gfxCat];
+      else saved[el.dataset.gfxCat] = el.value;
+      break;
+    default: return;
+  }
+  store.data.settings.graphics = saved;
+  gfxRuntime.frames.length = 0;
+  store.save();
+  applyGraphics();
+}
+
+/** Sync the Graphics controls and summary with the current settings. */
+function refreshGfxPanel() {
+  const panel = $('#gfx-panel');
+  if (!panel || !panel.firstChild) return;
+  const saved = gfxSaved();
+  const g = currentGfx();
+  const tierName = (p) => gfxT[p] || p;
+  const preset = $('#gfx-preset');
+  if (!preset.options.length) {
+    preset.append(gfxOption('auto', gfxT.auto.replace('{tier}', tierName(gfxEnv.detected))));
+    for (const p of PRESETS) preset.append(gfxOption(p, tierName(p)));
+  }
+  preset.value = PRESETS.includes(saved.preset) ? saved.preset : 'auto';
+  const pct = Math.round(g.renderScale * 100);
+  $('#gfx-scale').value = String(pct);
+  $('#gfx-scale-val').textContent = `${pct}%`;
+  for (const [cat, tiers] of Object.entries(CATEGORIES)) {
+    const sel = $(`#gfx-${cat}`);
+    sel.textContent = '';
+    sel.append(gfxOption('preset', gfxT.fromPreset.replace('{tier}', gfxT.tier[presetTier(g.preset, cat)])));
+    for (const t of tiers) sel.append(gfxOption(t, gfxT.tier[t]));
+    sel.value = tiers.includes(saved[cat]) ? saved[cat] : 'preset';
+  }
+  $('#gfx-adaptive').checked = g.adaptive;
+  $('#gfx-fps').checked = g.showFps;
+  const r = app.renderer && app.renderer.ok ? app.renderer.pixels() : null;
+  const pr = gfxPixelRatio(g);
+  const px = r || [Math.round(window.innerWidth * pr), Math.round(window.innerHeight * pr)];
+  $('#gfx-summary').textContent = `${gfxEnv.gpu || gfxT.gpuUnknown} · ${describe(g, px, gfxT.sum)}`;
+  $('#gfx-post-note').hidden = !gfxRuntime.postFailed;
+}
+
 // ---------------------------------------------------------------- settings
 let settingsReturnPause = false;
 function openSettings(fromPause) {
@@ -1391,7 +1901,6 @@ function openSettings(fromPause) {
   f.elements['vol-ambience'].value = s.volumes.ambience;
   f.elements['vol-voice'].value = s.volumes.voice;
   f.elements['muted'].checked = s.muted;
-  f.elements['quality'].value = s.quality;
   f.elements['theme'].value = s.theme;
   f.elements['reducedMotion'].checked = s.reducedMotion;
   f.elements['highContrast'].checked = s.highContrast;
@@ -1399,10 +1908,12 @@ function openSettings(fromPause) {
   f.elements['leftHanded'].checked = s.leftHanded;
   f.elements['callSpeed'].value = String(s.callSpeed);
   f.elements['autoHint'].checked = s.autoHint;
+  refreshGfxPanel();
   showScreen('settings');
 }
 
 $('#settings-form').addEventListener('input', (e) => {
+  if (e.target.dataset && e.target.dataset.gfx) return; // Graphics controls handle themselves
   const f = e.target.form;
   const s = store.data.settings;
   s.volumes.music = Number(f.elements['vol-music'].value);
@@ -1410,7 +1921,6 @@ $('#settings-form').addEventListener('input', (e) => {
   s.volumes.ambience = Number(f.elements['vol-ambience'].value);
   s.volumes.voice = Number(f.elements['vol-voice'].value);
   s.muted = f.elements['muted'].checked;
-  s.quality = f.elements['quality'].value;
   s.theme = f.elements['theme'].value;
   s.reducedMotion = f.elements['reducedMotion'].checked;
   s.highContrast = f.elements['highContrast'].checked;
@@ -1421,10 +1931,8 @@ $('#settings-form').addEventListener('input', (e) => {
   store.save();
   applyAudioSettings();
   applyAccessibility();
-  if (app.renderer && app.renderer.ok) {
-    app.renderer.applyTheme(s.theme);
-    app.renderer.applyQuality(s.quality);
-  }
+  if (app.renderer && app.renderer.ok) app.renderer.applyTheme(s.theme);
+  applyGraphics(); // reduced motion also freezes the hall and title lanterns
   if (app.screen === 'play') { scheduleNextCall(); syncPlayUi(); }
 });
 
@@ -1639,9 +2147,11 @@ function boot() {
   store.load();
   applyAudioSettings();
   applyAccessibility();
+  buildGfxPanel();
   refreshTitleProgress();
   refreshAccountLine();
   showScreen('title');
+  applyGraphics();
   setPhase('title', 'ready');
   // audio contexts need a user gesture; unlock on first interaction
   const unlockAudio = () => { audio.ensure(); audio.startAmbience(); document.removeEventListener('pointerdown', unlockAudio); };
@@ -1659,10 +2169,8 @@ function boot() {
       applyAccessibility();
       refreshTitleProgress();
       refreshAccountLine();
-      if (app.renderer && app.renderer.ok) {
-        app.renderer.applyTheme(store.data.settings.theme);
-        app.renderer.applyQuality(store.data.settings.quality);
-      }
+      if (app.renderer && app.renderer.ok) app.renderer.applyTheme(store.data.settings.theme);
+      applyGraphics();
     });
   }
 }

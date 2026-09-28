@@ -29,13 +29,18 @@ pattern close, and slam CLAIM before the other lanterns do.
 | `js/session.js` | `Session` — the only mutable holder of rules state; command log, undo snapshots, replay envelope + `verifyReplay`, `botCommands`. |
 | `js/content.js` | `THEMES`, `LESSONS`, 40 `JOURNEY_STAGES`, 4 `CHALLENGES`, `dailyFor(dateISO)`, and the offline `validateContent` simulator. |
 | `js/audio.js` | `AudioEngine`: four gain buses, sampled-clip loader over `sfx/manifest.json`, seeded synth fallback per event, caption emission. |
-| `js/game.js` | Everything the player touches: `HallRenderer`, screen state machine, card DOM, call loop, bots, results, settings, hosted hall client (rooms + legacy dev `/ws`), keyboard. |
+| `js/gfx.js` | Pure graphics quality model: presets, categories, `detectPreset(gpu)`, `resolve()`, `presetTier()`, `choosePreset()`, `describe()`. |
+| `js/gfx-strings.js` | Graphics-section strings in the nine locales and `pickLocale(navigator.languages)`. |
+| `js/hall-post.js` | Loaded on demand: EffectComposer chain (GTAO, UnrealBloom, grade + vignette, SMAA/FXAA) and the RoomEnvironment PMREM map. |
+| `js/title-fx.js` | `TitleFx`: 2D-canvas sky lanterns drifting behind the main menu. |
+| `js/vendor/three/addons/` | three r185 addons (postprocessing, shaders, RoomEnvironment), resolved through the `index.html` importmap. |
+| `js/game.js` | Everything the player touches: `HallRenderer`, graphics runtime (GPU probe, adaptive scale, FPS meter, Graphics panel), screen state machine, card DOM, call loop, bots, results, settings, hosted hall client (rooms + legacy dev `/ws`), keyboard. |
 | `js/platform.js` | StarHermit adapter: launch-token read/strip + JWT decode, Bearer api helper, 45-min token refresh, profile nickname, cloud-save mirror (stored-zip + base64), sync status. No-op without a token. |
 | `js/hallnet.js` | Realtime-rooms hall: REST lobby (quick-join/create/open/leave/result/mine), binary frame codec (server-stamped 16-byte sender prefix), guest throttles, and `HallHost` — the host-side caller/rounds runner. |
 | `server.js` | StarHermit `server=` script: static host, a dev-only `/api/v1/time` clock probe, and a dependency-free RFC6455 WebSocket hall for local play (no token). |
 | `sfx/` | 18 Opus one-shots + `manifest.txt` (canonical) / `manifest.json` (loader + generator input) / `manifest.md`. |
 | `assets/` | `title-hall.webp`, `results-lantern.webp` key art. |
-| `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js` (`npm test`), `e2e.mjs` (real-UI playthrough), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, plus older smoke harnesses. |
+| `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js`, `gfx.test.js` (`npm test`), `e2e.mjs` (real-UI playthrough incl. Graphics presets/override/persistence at desktop + mobile and a tall-desktop 3D hall pass under Ultra and Low), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, plus older smoke harnesses. |
 
 ---
 
@@ -67,7 +72,7 @@ everywhere, integer scores, `Session.verifyReplay`. *Rules out:* wall-clock in r
 
 **5. WebGL is scenery, not the game.**
 The lantern hall is atmosphere; the DOM grid is the game. *Rules in:* a `try/catch` around
-`WebGLRenderer`, a context-lost message, quality tiers down to 12 lanterns at DPR 1. *Rules out:*
+`WebGLRenderer`, a context-lost message, a Low preset down to 12 lanterns at DPR 1 with no post-processing. *Rules out:*
 any rule, hint or affordance that exists only in the 3D scene.
 
 ---
@@ -310,13 +315,35 @@ ball float over a rectilinear grid of 10 px-radius tiles. Marks are a filled amb
 numbers `clamp(16px, 2.6vw, 26px)` at weight 700, the call ball 800 in a circular chip. Numbers are
 tabular in score tables.
 
-**Motion.** Three effects only: the markable-cell outline pulse (1.2 s), the call-ball scale pop on
-draw, and the lantern sway (`sin` on x and y, per-instance phase). All three are cut by the
-`reduced-motion` body class **and** by `prefers-reduced-motion`; the countdown also shortens from
+**Motion.** The markable-cell outline pulse (1.2 s), the call-ball scale pop on draw, and — with
+Background motion on — the lantern sway (`sin` on x and y, per-instance phase), a gentle ball bob,
+ball-light flicker, rising dust motes in the hall, drifting sky lanterns on the title and a glow
+pulse on the title lantern. All are cut by the `reduced-motion` body class **and** by
+`prefers-reduced-motion`; the countdown also shortens from
 750 ms to 500 ms per beat. Nothing motion-only carries meaning.
 
 **The hero.** The current call — the glowing ball on its pole under a point light, mirrored in the
 `#call-display` chip. Second is the card; the hall recedes behind fog from 12 to 26 units.
+
+**Graphics.** The hall renders with ACES filmic tone mapping and sRGB output, a hemisphere fill
+plus a warm key light whose PCF shadow box is fitted to the card, ball and pole, a warm point light
+on the ball and a theme-tinted fill behind the lantern rows. Optional effects: key-light shadows,
+GTAO ambient occlusion, bloom limited to lantern paper and bright highlights (luminance threshold
+2.0), a colour grade with vignette, SMAA/FXAA/MSAA anti-aliasing, RoomEnvironment image-based
+reflections, 12/24/40 hanging lanterns, background motion, and surface detail (ribbed lathe
+lanterns with caps, a textured plank floor, a lacquered clearcoat board under bevelled glossy
+tiles, a brass pole and a clearcoat banded call ball; on the DOM side a lit-paper/lacquer finish
+on card cells, the call chip, panels and buttons — paint only, never lower contrast, off under High
+contrast). The Settings **Graphics** section offers a quality preset (Auto, chosen from the
+detected GPU — software renderers get Low, discrete GPUs and Apple M get High, others Balanced,
+touch devices capped at Balanced; Low; Balanced; High; Ultra), a render scale (50–200%), a
+per-effect override for each category ("From preset (…)" by default; choosing a preset clears
+overrides), adaptive resolution (steps the resolution down to 60% when ~90-frame averages exceed
+26 ms and back up under 14 ms) and a frame-rate readout (bottom-left, non-interactive), plus a
+summary "GPU · cost · W×H px". Changes apply immediately (no reload; canvas MSAA changes swap the
+WebGL renderer, keeping the scene) and persist in `store.data.settings.graphics` (cloud-mirrored
+with the other settings). If the post-processing addons or chain fail, the hall renders without
+them and the panel says so. The current preset is exposed as `body[data-gfx-preset]`.
 
 **Visual assets the design calls for.** (1) A title backdrop that says "festival hall at night"
 before any text is read, dark enough in the centre for a menu column to sit on it. (2) A results
@@ -363,7 +390,8 @@ readable with sound off.
 ## 10. Localization
 
 The product requires en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT.
-**Not implemented.** Today every string is a hard-coded English literal in `index.html`,
+The Settings **Graphics** section is localized in all nine (`js/gfx-strings.js`, picked from
+`navigator.languages`). **Not implemented** for the rest: every other string is a hard-coded English literal in `index.html`,
 `js/game.js` (status lines, hints, results, modals) and `js/content.js` (pattern names, lesson
 text, stage titles), and `<html lang="en">` is fixed. The intended shape is in §17: one
 `js/i18n.js` keyed catalogue, `navigator.languages` negotiation with a Settings override persisted
@@ -458,10 +486,15 @@ Reset progress clears progress only and keeps settings. In hosted mode the same 
 to the platform cloud-save slot (zip+base64): remote wins on boot, local writes debounce ~2 s to
 a PUT, and `pagehide` flushes pending saves. localStorage remains the offline cache.
 
-**Rendering budget.** Quality tiers cap device pixel ratio and lantern count: low = DPR 1 / 12
-lanterns / no sway, medium = DPR 1.5 / 24 / sway, high = DPR 2 / 40 / sway + shadows. Lanterns are
-a single `InstancedMesh`; the call number is drawn into one 128×128 `CanvasTexture` reused for both
-`map` and `emissiveMap`. The loop skips entirely while `document.hidden`, and `dt` is clamped to
+**Rendering budget.** Pixel ratio = min(devicePixelRatio, preset cap) × render scale × adaptive
+scale, with caps Low 1, Balanced 1.5, High/Ultra 2 (Ultra also ×1.25). Low: no shadows, no post,
+canvas MSAA, 12 plain lanterns, still background — `hall-post.js` and its addons are not even
+fetched. Balanced: 512² shadows, bloom, grade, FXAA, reflections, 24 lanterns. High: 1024²
+shadows, GTAO, SMAA, 40 lanterns. Ultra: 2048² shadows, 16-sample GTAO, 4× MSAA render target.
+The composer runs only when a pass needs it and is rebuilt when its key (passes, size, ratio)
+changes. Lanterns are one `InstancedMesh` (+ one for caps); the call number is drawn into one
+256×256 `CanvasTexture` reused for both `map` and `emissiveMap`. The hall skips rendering while its
+holder is collapsed (compact layouts), and the title lanterns stop when the title is hidden. The loop skips entirely while `document.hidden`, and `dt` is clamped to
 50 ms so a backgrounded tab cannot jump the sway.
 
 **Failure paths.** No WebGL → an explanatory paragraph in the canvas holder and a fully playable
@@ -556,6 +589,7 @@ room close.
 | `sfx/start-gong-swell.opus` | `go` — round-open swell on the final countdown beat | MOSS-SFX v2, 100 steps | generated this pass, wired |
 | `sfx/achieve-bell-bloom.opus` | `achievement` — badge-unlock bloom on results | MOSS-SFX v2, 100 steps | generated this pass, wired |
 | `js/three.module.js`, `js/three.core.min.js` | three.js r185 runtime | vendored (MIT) | shipped |
+| `js/vendor/three/addons/**` | three.js r185 postprocessing/shaders/RoomEnvironment addons | vendored from `three@0.185.1` (MIT) | shipped |
 
 No 3D model or character animation is generated: the hall is procedural primitives and instanced
 spheres by design (pillar 5), and there is no humanoid in the game.

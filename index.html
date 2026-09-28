@@ -7,6 +7,9 @@
 <meta name="color-scheme" content="dark" />
 <title>Lantern Bingo</title>
 <link rel="stylesheet" href="./css/style.css" />
+<script type="importmap">
+{ "imports": { "three": "./js/three.module.js", "three/addons/": "./js/vendor/three/addons/" } }
+</script>
 </head>
 <body>
 <div id="app">
@@ -123,14 +126,8 @@
           <label><input type="checkbox" name="muted" /> Mute all</label>
         </fieldset>
         <fieldset>
-          <legend>Graphics</legend>
-          <label>Quality tier
-            <select name="quality">
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
+          <legend id="gfx-legend">Graphics</legend>
+          <div id="gfx-panel" class="gfx-panel" data-gfx-panel></div>
           <label>Theme
             <select name="theme">
               <option value="ember">Ember Court</option>

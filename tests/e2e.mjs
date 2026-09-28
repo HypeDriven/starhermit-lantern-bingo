@@ -118,7 +118,7 @@ async function runPass(browser, tag, viewport, opts = {}) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !browserNoise.test(m.text())) errors.push(`console: ${m.text()}`);
+    if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console: ${m.text()}`);
   });
   const step = async (name, fn) => { await fn(); console.log(`ok - [${tag}] ${name}`); };
   const base = `http://127.0.0.1:${server.address().port}/`;
@@ -129,6 +129,36 @@ async function runPass(browser, tag, viewport, opts = {}) {
       await page.waitForSelector('#screen-title:not([hidden])', { timeout: 10000 });
       await page.waitForFunction(() => document.querySelector('#live-status').textContent.includes('title'));
       await page.screenshot({ path: SHOT('title', tag) });
+    });
+
+    await step('graphics: Low → High preset, bloom override, persists across reload', async () => {
+      await page.click('[data-nav="settings"]');
+      await page.waitForSelector('#screen-settings:not([hidden])');
+      await page.locator('#gfx-preset').scrollIntoViewIfNeeded();
+      await page.selectOption('#gfx-preset', 'low');
+      await page.waitForSelector('body[data-gfx-preset="low"]');
+      await page.selectOption('#gfx-preset', 'high');
+      await page.waitForSelector('body[data-gfx-preset="high"]');
+      if (!(await page.textContent('#gfx-summary')).includes('bloom')) throw new Error('High summary lacks bloom');
+      await page.selectOption('#gfx-bloom', 'off');
+      await page.waitForFunction(() => !document.querySelector('#gfx-summary').textContent.includes('bloom'));
+      const panelBox = await page.locator('#gfx-panel').boundingBox();
+      const vw = page.viewportSize().width;
+      if (!panelBox || panelBox.x < 0 || panelBox.x + panelBox.width > vw + 1) throw new Error('graphics panel overflows viewport');
+      await page.screenshot({ path: SHOT('graphics', tag) });
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('#screen-title:not([hidden])');
+      await page.waitForSelector('body[data-gfx-preset="high"]');
+      await page.click('[data-nav="settings"]');
+      await page.waitForSelector('#screen-settings:not([hidden])');
+      const kept = await page.evaluate(() => [document.querySelector('#gfx-preset').value, document.querySelector('#gfx-bloom').value]);
+      if (kept[0] !== 'high' || kept[1] !== 'off') throw new Error('graphics settings not persisted: ' + kept);
+      // back to Auto (software GPU → Low) so the rest of the run stays fast
+      await page.selectOption('#gfx-preset', 'auto');
+      await page.waitForSelector('body[data-gfx-preset="low"]');
+      if ((await page.inputValue('#gfx-bloom')) !== 'preset') throw new Error('preset did not clear overrides');
+      await page.click('#screen-settings [data-nav="title"]');
+      await page.waitForSelector('#screen-title:not([hidden])');
     });
 
     if (tag === 'desktop') {
@@ -254,6 +284,46 @@ async function runPass(browser, tag, viewport, opts = {}) {
   }
 }
 
+/** Tall desktop, where the 3D hall is visible: play under Ultra, then switch to Low mid-round. */
+async function runHallPass(browser) {
+  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console: ${m.text()}`);
+  });
+  const base = `http://127.0.0.1:${server.address().port}/`;
+  try {
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForSelector('#screen-title:not([hidden])');
+    await page.click('[data-nav="settings"]');
+    await page.selectOption('#gfx-preset', 'ultra');
+    await page.click('#screen-settings [data-nav="title"]');
+    await page.click('[data-nav="play-quick"]');
+    await page.click('#setup-start');
+    await page.waitForFunction(() => document.querySelector('#live-status').textContent.includes('active'), null, { timeout: 15000 });
+    await page.waitForTimeout(2500);
+    if (!(await page.locator('#canvas-holder canvas').isVisible())) throw new Error('3D hall not visible on tall desktop');
+    await page.screenshot({ path: SHOT('hall-ultra', 'desktop') });
+    await page.click('#btn-pause');
+    await page.waitForSelector('#modal-root[open]');
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.waitForSelector('#screen-settings:not([hidden])');
+    await page.selectOption('#gfx-preset', 'low');
+    await page.waitForSelector('body[data-gfx-preset="low"]');
+    await page.click('#screen-settings [data-nav="title"]');
+    await page.waitForSelector('#modal-root[open]');
+    await page.getByRole('button', { name: 'Resume' }).click();
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: SHOT('hall-low', 'desktop') });
+    if (errors.length) throw new Error('page errors in hall pass:\n' + errors.join('\n'));
+    console.log('ok - [desktop-tall] 3D hall renders under Ultra and Low with no console output');
+  } finally {
+    await context.close();
+  }
+}
+
 let browser = null;
 try {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -264,6 +334,8 @@ try {
 
   await runPass(browser, 'desktop', { width: 1280, height: 800 });
   await runPass(browser, 'mobile', { width: 390, height: 844 }, { hasTouch: true, isMobile: true });
+
+  await runHallPass(browser);
 
   console.log('\nE2E PASS — desktop + mobile playthroughs clean, no page errors');
 } finally {

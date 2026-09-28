@@ -260,3 +260,76 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
 @media (prefers-reduced-motion: reduce) {
   .card-cell.markable { animation: none; }
 }
+
+/* ---------------------------------------------------------------- graphics */
+#screen-title { position: relative; overflow: hidden; }
+#screen-title > :not(.title-fx) { position: relative; z-index: 1; }
+.title-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+body.high-contrast .title-fx { display: none; }
+
+.gfx-panel label > span { flex: 1; }
+.gfx-panel select { max-width: 60%; }
+.settings-form .gfx-scale-row input[type="range"] { flex: 1 1 80px; min-width: 60px; }
+.gfx-scale-val { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.settings-form label.gfx-check { justify-content: flex-start; }
+.gfx-summary { margin: 6px 0 2px; overflow-wrap: anywhere; }
+.gfx-note { margin: 4px 0; color: var(--danger); font-size: 0.9em; }
+#fps-meter {
+  position: fixed; left: calc(var(--sat-left) + 6px); bottom: calc(var(--sat-bottom) + 6px); z-index: 50;
+  pointer-events: none; font: 12px/1.2 ui-monospace, monospace; color: #e8ecff;
+  background: rgba(5, 8, 24, .7); padding: 3px 6px; border-radius: 6px;
+}
+#fps-meter:empty::before { content: '… fps'; }
+
+/* Detailed surfaces: lacquer and lit-paper finish on the DOM card, call ball and buttons.
+   Paint only (no layout change), never lowers text contrast, off in high contrast. */
+body.gfx-detailed:not(.high-contrast) .card-cell {
+  background: linear-gradient(165deg, #3a4d86 0%, var(--panel-2) 55%, #24315a 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), inset 0 -3px 0 rgba(0, 0, 0, .28), 0 3px 8px rgba(0, 0, 0, .35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+}
+body.gfx-detailed:not(.high-contrast) .card-cell:hover { background: linear-gradient(165deg, #4b62a3 0%, var(--panel-3) 60%, #2d3e70 100%); }
+body.gfx-detailed:not(.high-contrast) .card-cell.free {
+  background: radial-gradient(circle at 50% 40%, #6b3a2a 0%, #4a2620 70%, #3a1d1a 100%);
+  color: var(--accent);
+}
+body.gfx-detailed:not(.high-contrast) .card-cell.marked {
+  background: radial-gradient(circle at 50% 35%, #ffe6b0 0%, #ffc56e 45%, #f0a042 100%);
+  color: #0f1226; text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 -3px 0 rgba(150, 80, 10, .35), 0 3px 8px rgba(0, 0, 0, .35);
+}
+body.gfx-detailed.gfx-bloom:not(.high-contrast) .card-cell.marked {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 -3px 0 rgba(150, 80, 10, .35), 0 0 16px rgba(255, 180, 84, .55);
+}
+body.gfx-detailed:not(.high-contrast) #call-display {
+  background: radial-gradient(circle at 35% 30%, #fff3d6 0%, #ffc56e 35%, #e8922f 100%);
+  box-shadow: inset 0 -4px 8px rgba(120, 60, 0, .35), 0 4px 12px rgba(0, 0, 0, .4);
+}
+body.gfx-detailed.gfx-bloom:not(.high-contrast) #call-display {
+  box-shadow: inset 0 -4px 8px rgba(120, 60, 0, .35), 0 0 22px rgba(255, 180, 84, .6);
+}
+body.gfx-detailed:not(.high-contrast) .panel,
+body.gfx-detailed:not(.high-contrast) .rail {
+  background: linear-gradient(180deg, #1f2650 0%, var(--panel) 60%);
+  border: 1px solid rgba(255, 215, 160, .1);
+}
+body.gfx-detailed:not(.high-contrast) .menu-btn:not(.primary),
+body.gfx-detailed:not(.high-contrast) .tray-btn:not(.primary) {
+  background: linear-gradient(180deg, #34467c 0%, var(--panel-2) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 2px 6px rgba(0, 0, 0, .3);
+}
+body.gfx-detailed:not(.high-contrast) .menu-btn:not(.primary):hover,
+body.gfx-detailed:not(.high-contrast) .tray-btn:not(.primary):hover { background: linear-gradient(180deg, #4a5f9f 0%, var(--panel-3) 100%); }
+body.gfx-detailed:not(.high-contrast) .menu-btn.primary,
+body.gfx-detailed:not(.high-contrast) .tray-btn.primary {
+  background: linear-gradient(180deg, #ffc97a 0%, var(--accent-2) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 2px 10px rgba(255, 170, 70, .3);
+}
+body.gfx-detailed:not(.high-contrast) .tray-btn.primary:disabled { box-shadow: none; }
+body.gfx-detailed:not(.high-contrast) .game-title { text-shadow: 0 0 18px rgba(255, 180, 84, .35), 0 2px 4px rgba(0, 0, 0, .5); }
+body.gfx-detailed.gfx-animated:not(.reduced-motion):not(.high-contrast) .title-hero { animation: hero-glow 3.2s ease-in-out infinite; }
+@keyframes hero-glow {
+  0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 170, 70, .45)); transform: translateY(0); }
+  50% { filter: drop-shadow(0 0 22px rgba(255, 170, 70, .75)); transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) { .title-hero { animation: none !important; } }

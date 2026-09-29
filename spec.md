@@ -633,3 +633,7 @@ spheres by design (pillar 5), and there is no humanoid in the game.
 - **A no-winner terminal state.** Emit a `deck-exhausted` terminal reason and show a results screen
   for it instead of leaving the round parked.
 - **Lifetime achievement counters.** Persist `linesTotal` and `winStreak` in the save file.
+
+## Browser interference
+
+`browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.

@@ -47,10 +47,12 @@ function platformRest(req, res, url) {
     refreshCount++;
     return json(200, { token: TOKEN.slice(0, -4) + '.r' + refreshCount });
   }
-  if (url.pathname === '/api/v1/me/cloud-saves/lantern-bingo') {
+  if (url.pathname === '/api/v1/me/cloud-saves/game%3Alantern-bingo') {
     if (req.method === 'GET') {
       if (!cloudSave) return json(404, { error: 'not-found' });
-      return json(200, { dataBase64: cloudSave });
+      res.writeHead(200, { 'content-type': 'application/zip' });
+      res.end(Buffer.from(cloudSave, 'base64'));
+      return;
     }
     if (req.method === 'PUT') {
       let body = '';
@@ -59,6 +61,8 @@ function platformRest(req, res, url) {
       return;
     }
   }
+  if (url.pathname === '/api/v1/games/lantern-bingo/settings') return json(200, { settings: {} });
+  if (url.pathname === '/api/v1/games/lantern-bingo/controls') return json(200, { actions: [] });
   json(404, { error: 'not-found' });
 }
 

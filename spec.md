@@ -35,7 +35,9 @@ pattern close, and slam CLAIM before the other lanterns do.
 | `js/title-fx.js` | `TitleFx`: 2D-canvas sky lanterns drifting behind the main menu. |
 | `js/vendor/three/addons/` | three r185 addons (postprocessing, shaders, RoomEnvironment), resolved through the `index.html` importmap. |
 | `js/game.js` | Everything the player touches: `HallRenderer`, graphics runtime (GPU probe, adaptive scale, FPS meter, Graphics panel), screen state machine, card DOM, call loop, bots, results, settings, hosted hall client (rooms + legacy dev `/ws`), keyboard. |
-| `js/platform.js` | StarHermit adapter: launch-token read/strip + JWT decode, Bearer api helper, 45-min token refresh, profile nickname, cloud-save mirror (stored-zip + base64), sync status. No-op without a token. |
+| `starhermit-sdk.js` | Shared StarHermit client (unmodified copy): launch token, renewal, sign-in, profile, cloud save, settings, controls, invite link. |
+| `js/platform.js` | Adapter over the SDK: hosted flag, nickname, cloud-save mirror + sync status, settings-KV mirroring, key bindings, sign-in/invite, Bearer fetch for the rooms lobby. No-op without a token. |
+| `js/sh-strings.js` | Account-control strings in the nine locales. |
 | `js/hallnet.js` | Realtime-rooms hall: REST lobby (quick-join/create/open/leave/result/mine), binary frame codec (server-stamped 16-byte sender prefix), guest throttles, and `HallHost` — the host-side caller/rounds runner. |
 | `server.js` | StarHermit `server=` script: static host, a dev-only `/api/v1/time` clock probe, and a dependency-free RFC6455 WebSocket hall for local play (no token). |
 | `sfx/` | 18 Opus one-shots + `manifest.txt` (canonical) / `manifest.json` (loader + generator input) / `manifest.md`. |
@@ -428,21 +430,34 @@ German and French expansion fit without a new breakpoint).
 
 ## 12. StarHermit integration
 
-`starhermit.txt` declares `name`, `launch=index.html`, `owner`, `server=server.js`,
-`cover=coverart.png`, per https://wiki.starhermit.com/ conventions.
+`starhermit.txt` declares `name`, `launch=index.html`, `owner`, `server=server.js`, `cover`,
+and one `control.<action>=<Code> | <Label>` line per keyboard action (left/right/up/down, mark,
+call, claim, undo, hint, pause, camera, back).
+
+All platform calls go through the shared client `starhermit-sdk.js` (loaded before the game
+module) via the thin adapter `js/platform.js`. Without a launch token nothing calls the network
+and the game plays exactly as offline.
 
 **Used:**
-- **Launch token + identity.** Hosted mode activates iff `#game_token=<jwt>` was read from the
-  URL fragment (read once, then stripped; `?token=`/`?launch=` query fallbacks remain for local
-  dev). `sub`/`game_scope` are base64url-decoded; every `/api/v1` call carries
-  `Authorization: Bearer`, and the token is re-minted every 45 min via
-  `POST /api/v1/games/{slug}/launch-token` (60 s retry on failure). The account nickname comes
-  from `GET /api/v1/users/{sub}/profile` (never `/api/v1/me`, never usernames; `"Player "+id8`
-  fallback) and is shown on the title screen next to the cloud sync status.
-- **Cloud save.** The checksummed localStorage doc is mirrored to
-  `GET/PUT /api/v1/me/cloud-saves/lantern-bingo` (zip+base64, stored entries). Remote wins on
-  boot; saves debounce ~2 s and flush on `pagehide`/hidden-`visibilitychange`; localStorage stays
-  the offline cache.
+- **Launch token + renewal.** `StarHermit.init()` reads `#game_token=` (library launch) or
+  `#access_token=` (direct sign-in return), strips it from the URL and renews it before expiry.
+  If renewal is refused the game shows a "signed out" toast, hides the account line and invite
+  button, and keeps playing and saving locally.
+- **Sign-in.** On `<id>.starhermit.com` without a token the title shows **Sign in with
+  StarHermit** (`StarHermit.signIn()`); it is hidden when signed in and when running locally.
+- **Identity.** The title account line shows "Playing as <nickname>" (profile `nickname`, falling
+  back to `Player <id prefix>`) plus the cloud sync status; hosted-hall seats use the same name.
+- **Cloud save.** The checksummed localStorage doc is mirrored to the `game:<slug>` cloud-save
+  slot: remote wins on boot, saves debounce ~2 s, `pagehide`/hidden tab flush with keepalive.
+  localStorage stays the offline cache.
+- **Settings KV.** Every top-level preference (volumes, mute, theme, graphics, reduced motion,
+  high contrast, larger text, left-handed tray, call speed, auto-hint) is patched to the
+  per-player settings store when it changes; on boot the stored values override the local ones.
+- **Controls.** Keyboard input is routed by `event.code` through `StarHermit.loadBindings()`
+  (defaults = the manifest's `control.*` lines). The action-tray key hints and the Help
+  "Keyboard" card show the effective bindings.
+- **Invite link.** Signed-in players get **Invite a friend** on the title, which copies
+  `StarHermit.inviteLink()` to the clipboard with a confirmation toast.
 - **Hosted halls via realtime rooms.** With a token, Hosted Play quick-joins (or creates and
   opens) a StarHermit realtime room and connects to `/ws/v1/realtime?roomId=…&access_token=…`.
   The room's host client runs the caller/rounds with the same Session + bots as local play
@@ -451,16 +466,15 @@ German and French expansion fit without a new breakpoint).
   joiners spectate until the next round; the host posts `POST /rooms/{id}/result` and rounds
   restart on a 15 s grace. Without a token, Hosted Play keeps using the repo's own `server.js`
   hall over `/ws` (local dev only — that protocol is unreachable on-platform).
-- **Dev clock probe.** `server.js` still serves `/api/v1/time` for older local checkouts; the
-  client no longer calls it (the daily boundary is local UTC, and the old `/api/v1/daily` route
-  is removed — it was a fabricated platform route).
-
 - **Cover art.** `coverart.png` (1200×675).
 
-**Not used:** leaderboards (personal bests stay local + cloud-mirrored), achievements as a
-platform service (they are local, part of the cloud-saved doc — `server.js` is a standalone
-Node host, not a Jint game script, so there is no script-owned unlock path), and friend
-invites/matchmaking beyond quick-join.
+The account-control strings (sign-in, invite, toasts, "Playing as") are localized in the nine
+locales (`js/sh-strings.js`).
+
+**Not used:** gameplay sessions, matchmaking queues, friend-picker invites, session chat,
+platform achievements, leaderboards and replays — `server.js` is a standalone Node host, not a
+platform game script, so it declares no achievements, scores or replays and there are no
+platform sessions to join. Achievements and personal bests stay local and travel in the cloud save.
 
 ---
 
@@ -529,10 +543,10 @@ full flow; any `pageerror` or non-noise `console.error` fails the run.
   golden easy/medium/hard sessions terminate with valid winners; all 44 content items pass the
   offline validator; Journey has 40 unique ids and seeds; the daily is stable per day and differs
   across days; challenges validate.
-- **`tests/platform.test.js` (13).** Stored-zip structure + strict-reader round-trip; base64 helpers;
-  JWT decode; fragment read-once/strip + query fallback; offline = zero API activity; Bearer on
-  every call; 45-min refresh swap + 60 s retry; nickname preference/fallback (username never
-  shown); cloud debounce/flush/zip payload; remote-preferred load (zip bytes, base64 JSON, 404).
+- **`tests/platform.test.js` (7).** Adapter + real SDK with stubbed fetch: fragment token read,
+  stripped and decoded; profile nickname (never username) with Bearer; cloud-save round-trip at
+  `game:<slug>` with sync status; settings KV load + changed-key PATCH after priming; binding
+  overrides and invite link; standalone = zero fetches; sign-in offered on the platform host.
 - **`tests/hallnet.test.js` (8).** Frame codec round-trip + caps; socket identity harvest
   (room/roster/whoami); guest 30 msg/s throttle; host seating + bot fill; mid-round spectator →
   next-round seat; forced-identity + bounds validation + idempotent duplicates; authoritative call

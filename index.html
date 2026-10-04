@@ -11,6 +11,7 @@
 { "imports": { "three": "./js/three.module.js", "three/addons/": "./js/vendor/three/addons/" } }
 </script>
 <script src="browser-guard.js"></script>
+<script src="starhermit-sdk.js"></script>
 </head>
 <body>
 <div id="app">
@@ -41,6 +42,10 @@
       </nav>
       <p id="title-progress" class="muted"></p>
       <p id="account-line" class="muted" hidden></p>
+      <div class="account-actions">
+        <button type="button" class="menu-btn" id="btn-signin" hidden>Sign in with StarHermit</button>
+        <button type="button" class="menu-btn" id="btn-invite" hidden>Invite a friend</button>
+      </div>
     </section>
 
     <!-- Mode setup -->
@@ -94,11 +99,11 @@
       </div>
 
       <footer id="action-tray" class="action-tray" aria-label="Actions">
-        <button type="button" class="tray-btn" id="btn-call">Call <kbd>Space</kbd></button>
-        <button type="button" class="tray-btn primary" id="btn-claim" disabled>Claim <kbd>C</kbd></button>
-        <button type="button" class="tray-btn" id="btn-undo" hidden>Undo <kbd>U</kbd></button>
-        <button type="button" class="tray-btn" id="btn-hint">Hint <kbd>H</kbd></button>
-        <button type="button" class="tray-btn" id="btn-pause">Pause <kbd>P</kbd></button>
+        <button type="button" class="tray-btn" id="btn-call">Call <kbd data-key="call">Space</kbd></button>
+        <button type="button" class="tray-btn primary" id="btn-claim" disabled>Claim <kbd data-key="claim">C</kbd></button>
+        <button type="button" class="tray-btn" id="btn-undo" hidden>Undo <kbd data-key="undo">U</kbd></button>
+        <button type="button" class="tray-btn" id="btn-hint">Hint <kbd data-key="hint">H</kbd></button>
+        <button type="button" class="tray-btn" id="btn-pause">Pause <kbd data-key="pause">P</kbd></button>
       </footer>
     </section>
 
@@ -180,7 +185,7 @@
         </article>
         <article class="rule-card">
           <h3>Keyboard</h3>
-          <p>Arrow keys move between cells, <kbd>Enter</kbd>/<kbd>Space</kbd> mark, <kbd>C</kbd> claim, <kbd>U</kbd> undo in Practice, <kbd>H</kbd> hint, <kbd>P</kbd> pause, <kbd>Esc</kbd> back.</p>
+          <p><kbd data-key="left">←</kbd><kbd data-key="right">→</kbd><kbd data-key="up">↑</kbd><kbd data-key="down">↓</kbd> move between cells, <kbd data-key="mark">Enter</kbd> marks (<kbd data-key="call">Space</kbd> marks a focused cell, otherwise calls), <kbd data-key="claim">C</kbd> claim, <kbd data-key="undo">U</kbd> undo in Practice, <kbd data-key="hint">H</kbd> hint, <kbd data-key="pause">P</kbd> pause, <kbd data-key="camera">R</kbd> reset camera, <kbd data-key="back">Esc</kbd> back.</p>
         </article>
         <article class="rule-card">
           <h3>Scoring</h3>
@@ -206,6 +211,7 @@
   </dialog>
 
 </div>
+<p id="sh-toast" class="sh-toast" role="status" aria-live="polite" hidden></p>
 <script type="module" src="./js/game.js"></script>
 <noscript><p>Lantern Bingo requires JavaScript to run.</p></noscript>
 </body>

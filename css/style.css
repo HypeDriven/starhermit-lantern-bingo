@@ -333,3 +333,16 @@ body.gfx-detailed.gfx-animated:not(.reduced-motion):not(.high-contrast) .title-h
   50% { filter: drop-shadow(0 0 22px rgba(255, 170, 70, .75)); transform: translateY(-4px); }
 }
 @media (prefers-reduced-motion: reduce) { .title-hero { animation: none !important; } }
+
+/* StarHermit account controls (title) + toast */
+.account-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: min(92vw, 340px); }
+.account-actions:not(:has(button:not([hidden]))) { display: none; }
+.account-actions .menu-btn { flex: 1 1 100%; }
+.sh-toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + var(--sat-bottom)); z-index: 50;
+  max-width: min(92vw, 420px); margin: 0; padding: 10px 16px; border-radius: 10px;
+  background: var(--panel-2); color: var(--ink); border: 1px solid var(--accent-2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .45); text-align: center;
+}
+.sh-toast[hidden] { display: none; }

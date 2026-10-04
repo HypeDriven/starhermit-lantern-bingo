@@ -21,6 +21,7 @@ import {
 } from './gfx.js';
 import { GFX_STRINGS, pickLocale } from './gfx-strings.js';
 import { TitleFx } from './title-fx.js';
+import { shStrings } from './sh-strings.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -33,6 +34,7 @@ const platform = createPlatform({
   onPageHide: (fn) => window.addEventListener('pagehide', fn),
 });
 platform.onSync(() => refreshAccountLine());
+const shT = shStrings(navigator.languages || [navigator.language]);
 
 // ---------------------------------------------------------------- persistence
 const SAVE_KEY = 'lantern-bingo-v1';
@@ -81,10 +83,23 @@ const store = {
   },
   save() {
     this._writeLocal();
-    if (platform.hosted) platform.pushCloud(this.data); // debounced mirror
+    if (platform.hosted) {
+      platform.pushCloud(this.data); // debounced mirror
+      platform.pushSettings(this.data.settings); // per-player settings KV (changed keys only)
+    }
   },
   // Remote-preferred cloud load: a valid remote doc replaces local data and
   // is re-written to localStorage so the cache always mirrors the cloud.
+  // Platform settings KV wins over the local/cloud-save copy, key by key.
+  adoptSettings(remote) {
+    const s = this.data.settings;
+    let changed = false;
+    for (const k of Object.keys(defaultSave().settings)) {
+      if (remote && remote[k] !== undefined && remote[k] !== null) { s[k] = remote[k]; changed = true; }
+    }
+    if (changed) this._writeLocal();
+    return changed;
+  },
   adoptRemote(remote) {
     if (!remote || remote.version !== 1) return false;
     this.data = { ...defaultSave(), ...remote,
@@ -2067,8 +2082,38 @@ function refreshAccountLine() {
     synced: 'cloud save synced', saving: 'saving…',
     error: 'cloud save offline', offline: 'cloud save offline',
   }[platform.syncStatus] || String(platform.syncStatus);
-  el.textContent = `Playing as ${platform.nickname || '…'} · ${statusText}`;
+  el.textContent = `${shT.playingAs.replace('{name}', platform.nickname || '…')} · ${statusText}`;
 }
+
+// Sign-in (only on <id>.starhermit.com without a token) and invite link
+// (only when signed in). Both hidden for local play.
+function refreshAccountButtons() {
+  $('#btn-signin').hidden = !platform.canSignIn();
+  $('#btn-invite').hidden = !platform.hosted;
+}
+let toastTimer = null;
+function toast(text) {
+  const el = $('#sh-toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+}
+$('#btn-signin').textContent = shT.signIn;
+$('#btn-invite').textContent = shT.invite;
+$('#btn-signin').addEventListener('click', () => { audio.event('ui'); platform.signIn(); });
+$('#btn-invite').addEventListener('click', async () => {
+  audio.event('ui');
+  const link = platform.inviteLink();
+  if (!link) return;
+  try { await navigator.clipboard.writeText(link); toast(shT.copied); }
+  catch (_) { toast(shT.copyFailed); }
+});
+platform.onAuth((a) => {
+  refreshAccountLine();
+  refreshAccountButtons();
+  if (!a.signedIn) toast(shT.signedOut); // keep playing locally
+});
 
 // Seat display name in a hosted hall (host-provided), else the raw id.
 function hostedName(id) {
@@ -2107,32 +2152,62 @@ function moveFocus(dx, dy) {
   if (el) el.focus();
 }
 
+// Key bindings: defaults mirror the control.* lines in starhermit.txt; the
+// player's StarHermit overrides replace them at boot. Routed by event.code.
+const DEFAULT_BINDINGS = {
+  left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'],
+  mark: ['Enter'], call: ['Space'], claim: ['KeyC'], undo: ['KeyU'], hint: ['KeyH'],
+  pause: ['KeyP'], camera: ['KeyR'], back: ['Escape'],
+};
+let bindings = DEFAULT_BINDINGS;
+let codeToAction = new Map();
+function setBindings(b) {
+  bindings = b;
+  codeToAction = new Map();
+  for (const [action, codes] of Object.entries(b)) for (const c of codes) codeToAction.set(c, action);
+  renderKeyHints();
+}
+function keyLabel(code) {
+  if (!code) return '';
+  const arrows = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' };
+  if (arrows[code]) return arrows[code];
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  if (code === 'Escape') return 'Esc';
+  return code;
+}
+function renderKeyHints() {
+  $$('kbd[data-key]').forEach((k) => { k.textContent = keyLabel((bindings[k.dataset.key] || [])[0]); });
+}
+setBindings(DEFAULT_BINDINGS);
+
 document.addEventListener('keydown', (e) => {
+  const act = codeToAction.get(e.code);
   if ($('#modal-root').open) {
-    if (e.key === 'Escape' && app.gamePhase === 'paused') { e.preventDefault(); resumeGame(); }
+    if (act === 'back' && app.gamePhase === 'paused') { e.preventDefault(); resumeGame(); }
     return;
   }
   if (app.screen === 'play') {
-    switch (e.key) {
-      case 'ArrowLeft': e.preventDefault(); moveFocus(-1, 0); return;
-      case 'ArrowRight': e.preventDefault(); moveFocus(1, 0); return;
-      case 'ArrowUp': e.preventDefault(); moveFocus(0, -1); return;
-      case 'ArrowDown': e.preventDefault(); moveFocus(0, 1); return;
-      case 'Enter': e.preventDefault(); markCell(app.focusCell); return;
-      case ' ':
+    switch (act) {
+      case 'left': e.preventDefault(); moveFocus(-1, 0); return;
+      case 'right': e.preventDefault(); moveFocus(1, 0); return;
+      case 'up': e.preventDefault(); moveFocus(0, -1); return;
+      case 'down': e.preventDefault(); moveFocus(0, 1); return;
+      case 'mark': e.preventDefault(); markCell(app.focusCell); return;
+      case 'call':
         e.preventDefault();
         if (document.activeElement && document.activeElement.classList.contains('card-cell')) markCell(app.focusCell);
         else if (app.mode !== 'hosted') doCall();
         return;
-      case 'c': case 'C': if (app.mode === 'hosted') hostedSend({ type: 'claim' }); else tryClaim(); return;
-      case 'u': case 'U': if (!$('#btn-undo').hidden && app.session && app.session.undo()) { audio.event('ui'); syncPlayUi(); } return;
-      case 'h': case 'H': $('#btn-hint').click(); return;
-      case 'p': case 'P': app.gamePhase === 'paused' ? resumeGame() : pauseGame(); return;
-      case 'r': case 'R': if (app.renderer && app.renderer.ok) app.renderer.resetCamera(); return;
-      case 'Escape': pauseGame(); return;
+      case 'claim': if (app.mode === 'hosted') hostedSend({ type: 'claim' }); else tryClaim(); return;
+      case 'undo': if (!$('#btn-undo').hidden && app.session && app.session.undo()) { audio.event('ui'); syncPlayUi(); } return;
+      case 'hint': $('#btn-hint').click(); return;
+      case 'pause': app.gamePhase === 'paused' ? resumeGame() : pauseGame(); return;
+      case 'camera': if (app.renderer && app.renderer.ok) app.renderer.resetCamera(); return;
+      case 'back': pauseGame(); return;
       default: return;
     }
-  } else if (e.key === 'Escape' && app.screen !== 'title') {
+  } else if (act === 'back' && app.screen !== 'title') {
     // route through the pause-aware Back/Done buttons when those flows are active;
     // preventDefault so the same Escape can't immediately cancel the pause
     // modal those buttons reopen
@@ -2150,6 +2225,7 @@ function boot() {
   buildGfxPanel();
   refreshTitleProgress();
   refreshAccountLine();
+  refreshAccountButtons();
   showScreen('title');
   applyGraphics();
   setPhase('title', 'ready');
@@ -2163,8 +2239,13 @@ function boot() {
       refreshAccountLine();
       if (hallHost) hallHost.me().name = platform.nickname || hallHost.me().name;
     });
-    platform.loadCloud().then((remote) => {
-      if (!store.adoptRemote(remote)) return;
+    platform.loadBindings(DEFAULT_BINDINGS).then(setBindings);
+    // Remote-first: cloud save, then the settings KV on top (platform wins).
+    Promise.all([platform.loadCloud(), platform.loadSettings()]).then(([remote, kv]) => {
+      const adopted = store.adoptRemote(remote);
+      const tuned = store.adoptSettings(kv);
+      platform.primeSettings(store.data.settings);
+      if (!adopted && !tuned) return;
       applyAudioSettings();
       applyAccessibility();
       refreshTitleProgress();

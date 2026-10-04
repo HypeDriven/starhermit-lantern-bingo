@@ -1,308 +1,168 @@
 'use strict';
 
-// StarHermit platform adapter tests: token read/strip, JWT decode, Bearer
-// auth, refresh, nickname, cloud save (debounce/flush/remote-preferred), and
-// the stored-zip codec.
+// StarHermit adapter tests: js/platform.js driven by the real shared SDK
+// (starhermit-sdk.js) with a stubbed fetch and launch fragment.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPlatform, _internals } from '../js/platform.js';
+import fs from 'node:fs';
+import { createPlatform } from '../js/platform.js';
 
-const { zipStore, unzipFirstEntry, bytesToBase64, base64ToBytes, decodeJwtPayload, readLaunchToken } = _internals;
+const SDK_SRC = fs.readFileSync(new URL('../starhermit-sdk.js', import.meta.url), 'utf8');
+function loadSdk() {
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'self', SDK_SRC)(mod, mod.exports, globalThis);
+  return mod.exports;
+}
 
 function b64url(obj) {
-  return btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return Buffer.from(JSON.stringify(obj)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-function makeJwt(claims) { return b64url({ alg: 'none' }) + '.' + b64url(claims) + '.sig'; }
+const SLUG = 'lantern-bingo';
+const USER = 'a1b2c3d4-0000-4000-8000-000000000001';
+function makeJwt() {
+  return b64url({ alg: 'none' }) + '.' +
+    b64url({ sub: USER, game_scope: SLUG, exp: Math.floor(Date.now() / 1000) + 3600 }) + '.sig';
+}
 
-function fakeLocation(href) {
+function fakeWindow(href) {
   const u = new URL(href);
-  return {
-    href, protocol: u.protocol, host: u.host,
-    hash: u.hash, search: u.search,
-  };
-}
-function fakeHistory() {
-  return { calls: [], replaceState(_a, _b, url) { this.calls.push(url); } };
-}
-
-// A scriptable fetch mock: queue responses, record calls.
-function fakeFetch() {
-  const calls = [];
-  const queue = [];
-  const fn = async (path, opts = {}) => {
-    calls.push({ path, opts, headers: opts.headers || {} });
-    if (!queue.length) return { ok: false, status: 500, json: async () => null, headers: { get: () => null } };
-    return queue.shift();
-  };
-  fn.calls = calls;
-  fn.queue = queue;
-  fn.respondJson = (body, status = 200) => queue.push({
-    ok: status >= 200 && status < 300, status,
-    json: async () => body, headers: { get: () => 'application/json' },
-  });
-  fn.respondZip = (bytes) => queue.push({
-    ok: true, status: 200,
-    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-    json: async () => null, headers: { get: () => 'application/zip' },
-  });
-  fn.respond404 = () => queue.push({ ok: false, status: 404, json: async () => null, headers: { get: () => null } });
-  return fn;
-}
-
-// Fake timer queue: run pending timers manually.
-function fakeTimers() {
-  const pending = new Map();
-  let next = 1;
-  return {
-    setTimeout(fn, ms) { const id = next++; pending.set(id, { fn, ms }); return id; },
-    clearTimeout(id) { pending.delete(id); },
-    run(ms) { // run every timer scheduled with delay <= ms, in insertion order
-      const due = [...pending.entries()].filter(([, t]) => t.ms <= ms);
-      for (const [id, t] of due) { pending.delete(id); t.fn(); }
+  const win = {
+    location: {
+      href, hostname: u.hostname, pathname: u.pathname, search: u.search, hash: u.hash, origin: u.origin,
+      assign() {},
     },
-    pending: () => pending.size,
+    history: { state: null, replaceState(_s, _t, url) { win.replaced = url; win.location.hash = ''; } },
+  };
+  return win;
+}
+
+// Fake platform: records calls, keeps one cloud-save slot and a settings KV.
+function fakePlatform() {
+  const calls = [];
+  let slot = null;
+  const settings = { theme: 'jade' };
+  const res = (status, body, bytes) => ({
+    ok: status >= 200 && status < 300, status,
+    text: async () => (body == null ? '' : JSON.stringify(body)),
+    json: async () => body,
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    headers: { get: () => null },
+  });
+  const fetch = async (url, init = {}) => {
+    const method = init.method || 'GET';
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    calls.push({ url, method, body, auth: (init.headers || {}).Authorization || (init.headers || {}).authorization });
+    if (url === `/api/v1/users/${USER}/profile`) return res(200, { nickname: 'Lamplighter', username: 'secret_user' });
+    if (url === `/api/v1/me/cloud-saves/${encodeURIComponent('game:' + SLUG)}`) {
+      if (method === 'PUT') { slot = Buffer.from(body.dataBase64, 'base64'); return res(204); }
+      return slot ? res(200, null, new Uint8Array(slot)) : res(404);
+    }
+    if (url === `/api/v1/games/${SLUG}/settings`) {
+      if (method === 'PATCH') { Object.assign(settings, body.settings); return res(200, { settings }); }
+      return res(200, { settings });
+    }
+    if (url === `/api/v1/games/${SLUG}/controls`) {
+      return res(200, { actions: [{ action: 'claim', codes: ['KeyX'] }] });
+    }
+    return res(404);
+  };
+  return { fetch, calls, settings };
+}
+
+function timers() {
+  const q = [];
+  return {
+    setTimeout(fn) { q.push(fn); return q.length; },
+    clearTimeout() {},
+    runAll() { while (q.length) q.shift()(); },
   };
 }
 
-test('stored zip round-trips and has a valid central directory', () => {
-  const data = new TextEncoder().encode(JSON.stringify({ version: 1, progress: { journeyDone: ['a', 'b'] } }));
-  const zip = zipStore('save.json', data);
-  // strict structural checks (mirrors python zipfile / unzip -t)
-  const dv = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
-  assert.equal(dv.getUint32(0, true), 0x04034b50);           // local header
-  assert.equal(dv.getUint16(8, true), 0);                    // stored, no compression
-  // EOCD: find the signature
-  let eocd = -1;
-  for (let i = zip.length - 22; i >= 0; i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  assert.notEqual(eocd, -1, 'EOCD record present');
-  assert.equal(dv.getUint16(eocd + 8, true), 1);             // one entry
-  assert.equal(dv.getUint16(eocd + 10, true), 1);
-  const cdSize = dv.getUint32(eocd + 12, true);
-  const cdOff = dv.getUint32(eocd + 16, true);
-  assert.equal(cdOff + cdSize, eocd, 'central directory ends where EOCD begins');
-  assert.equal(dv.getUint32(cdOff, true), 0x02014b50);       // CD header
-  const out = unzipFirstEntry(zip);
-  assert.equal(new TextDecoder().decode(out), new TextDecoder().decode(data));
+function hostedSetup() {
+  const fp = fakePlatform();
+  const t = timers();
+  const win = fakeWindow(`https://${SLUG}.starhermit.com/index.html#game_token=${makeJwt()}&session_id=s-1`);
+  const sh = loadSdk().create({ window: win, fetch: fp.fetch, setTimeout: t.setTimeout, clearTimeout: t.clearTimeout });
+  const p = createPlatform({ sh, fetch: fp.fetch, setTimeout: t.setTimeout, clearTimeout: t.clearTimeout });
+  return { fp, t, win, sh, p };
+}
+
+test('launch token is read from the fragment, stripped, and decoded', () => {
+  const { p, win } = hostedSetup();
+  assert.equal(p.hosted, true);
+  assert.equal(p.slug, SLUG);
+  assert.equal(p.sub, USER);
+  assert.equal(p.launchSessionId, 's-1');
+  assert.ok(!String(win.replaced).includes('game_token'));
 });
 
-test('base64 byte helpers round-trip binary data', () => {
-  const bytes = new Uint8Array([0, 1, 2, 250, 251, 252, 253, 254, 255]);
-  assert.deepEqual([...base64ToBytes(bytesToBase64(bytes))], [...bytes]);
+test('profile nickname is the display name (never the username)', async () => {
+  const { p, fp } = hostedSetup();
+  assert.equal(await p.loadProfile(), 'Lamplighter');
+  const call = fp.calls.find((c) => c.url.endsWith('/profile'));
+  assert.match(call.auth, /^Bearer /);
 });
 
-test('JWT payload decode: sub and game_scope, base64url', () => {
-  const jwt = makeJwt({ sub: 'user-123', game_scope: 'lantern-bingo', exp: 123 });
-  assert.deepEqual(decodeJwtPayload(jwt), { sub: 'user-123', game_scope: 'lantern-bingo', exp: 123 });
-  assert.equal(decodeJwtPayload('not-a-jwt'), null);
-  assert.equal(decodeJwtPayload('a.bad!.sig'), null);
+test('cloud save round-trips through /me/cloud-saves/game:<slug>', async () => {
+  const { p, fp } = hostedSetup();
+  const statuses = [];
+  p.onSync((s) => statuses.push(s));
+  p.pushCloud({ version: 1, progress: { gamesPlayed: 7 } });
+  await p.flushCloud();
+  const put = fp.calls.find((c) => c.method === 'PUT');
+  assert.equal(put.url, '/api/v1/me/cloud-saves/game%3Alantern-bingo');
+  assert.deepEqual(await p.loadCloud(), { version: 1, progress: { gamesPlayed: 7 } });
+  assert.deepEqual(statuses, ['saving', 'synced']);
 });
 
-test('fragment token read once then stripped; query fallback kept for dev', () => {
-  const jwt = makeJwt({ sub: 'u1', game_scope: 'lantern-bingo' });
-  const loc = fakeLocation(`https://lantern-bingo.starhermit.com/#game_token=${jwt}&session_id=abc`);
-  const hist = fakeHistory();
-  const got = readLaunchToken(loc, hist);
-  assert.equal(got.token, jwt);
-  assert.equal(got.via, 'fragment');
-  assert.equal(hist.calls.length, 1);
-  assert.ok(!hist.calls[0].includes('game_token'), 'token stripped from URL');
-
-  const loc2 = fakeLocation(`http://localhost:8080/?token=${jwt}`);
-  const hist2 = fakeHistory();
-  const got2 = readLaunchToken(loc2, hist2);
-  assert.equal(got2.via, 'query');
-  assert.equal(hist2.calls.length, 0, 'query fallback is not stripped');
+test('settings: load from KV, then patch only changed keys after priming', async () => {
+  const { p, fp, t } = hostedSetup();
+  assert.deepEqual(await p.loadSettings(), { theme: 'jade' });
+  p.pushSettings({ theme: 'jade', muted: false }); // before priming: ignored
+  p.primeSettings({ theme: 'jade', muted: false });
+  p.pushSettings({ theme: 'plum', muted: false });
+  t.runAll();
+  await new Promise((r) => setImmediate(r));
+  const patch = fp.calls.find((c) => c.method === 'PATCH');
+  assert.equal(patch.url, `/api/v1/games/${SLUG}/settings`);
+  assert.deepEqual(patch.body, { settings: { theme: 'plum' } });
+  assert.equal(fp.settings.theme, 'plum');
 });
 
-test('no token → not hosted, no API activity', () => {
-  const fetch = fakeFetch();
-  const timers = fakeTimers();
-  const p = createPlatform({
-    location: fakeLocation('http://localhost:8080/'), history: fakeHistory(),
-    fetch, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
+test('bindings apply platform overrides over defaults; invite link uses user + slug', async () => {
+  const { p } = hostedSetup();
+  const b = await p.loadBindings({ claim: ['KeyC'], hint: ['KeyH'] });
+  assert.deepEqual(b, { claim: ['KeyX'], hint: ['KeyH'] });
+  assert.equal(p.inviteLink(), `https://dashboard.starhermit.com/game-invite/${USER}/${SLUG}`);
+  assert.equal(p.canSignIn(), false);
+});
+
+test('standalone: no token means no fetch at all, local defaults everywhere', async () => {
+  const fp = fakePlatform();
+  const win = fakeWindow('http://localhost:8080/index.html');
+  const sh = loadSdk().create({ window: win, fetch: fp.fetch });
+  const p = createPlatform({ sh, fetch: fp.fetch });
   assert.equal(p.hosted, false);
-  assert.equal(p.syncStatus, 'offline');
-  timers.run(60 * 60 * 1000);
-  assert.equal(fetch.calls.length, 0, 'no refresh without a token');
-});
-
-test('api sends Authorization: Bearer on every call', async () => {
-  const jwt = makeJwt({ sub: 'u1', game_scope: 'lantern-bingo' });
-  const fetch = fakeFetch();
-  fetch.respondJson({ ok: true });
-  const timers = fakeTimers();
-  const p = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  await p.api('/api/v1/anything', { method: 'GET' });
-  assert.equal(fetch.calls.length, 1);
-  assert.equal(fetch.calls[0].headers.authorization, 'Bearer ' + jwt);
-  assert.equal(p.slug, 'lantern-bingo');
-  assert.equal(p.sub, 'u1');
-});
-
-const tick = () => new Promise((r) => setImmediate(r));
-
-test('45-min refresh re-mints and swaps the token; failure retries in 60 s', async () => {
-  const jwt = makeJwt({ sub: 'u1', game_scope: 'lantern-bingo' });
-  const fetch = fakeFetch();
-  const timers = fakeTimers();
-  const p = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  assert.equal(fetch.calls.length, 0);
-  fetch.respondJson({ token: 'refreshed-token' });
-  timers.run(45 * 60 * 1000); // fire the scheduled refresh
-  assert.equal(fetch.calls.length, 1);
-  assert.equal(fetch.calls[0].path, '/api/v1/games/lantern-bingo/launch-token');
-  assert.equal(fetch.calls[0].opts.method, 'POST');
-  assert.equal(fetch.calls[0].headers.authorization, 'Bearer ' + jwt);
-  await tick();
-  assert.equal(p.token, 'refreshed-token');
-  // next refresh scheduled; a failure schedules a 60 s retry instead
-  fetch.respondJson(null, 500);
-  timers.run(45 * 60 * 1000);
-  await tick();
-  const countAfterFail = fetch.calls.length;
-  timers.run(59 * 1000);
-  assert.equal(fetch.calls.length, countAfterFail, 'no retry before 60 s');
-  timers.run(60 * 1000);
-  assert.equal(fetch.calls.length, countAfterFail + 1, 'retry at 60 s');
-});
-
-test('nickname from profile; Player+id8 fallback; username never displayed', async () => {
-  const jwt = makeJwt({ sub: 'abcdefgh-1234', game_scope: 'lantern-bingo' });
-  const fetch = fakeFetch();
-  const timers = fakeTimers();
-  const p = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  fetch.respondJson({ id: 'abcdefgh-1234', username: 'ignored_user', nickname: 'Hall Warden' });
-  const name = await p.loadProfile();
-  assert.equal(name, 'Hall Warden');
-  assert.equal(p.nickname, 'Hall Warden');
-  assert.ok(!fetch.calls.some(c => c.path === '/api/v1/me'), 'never calls /api/v1/me');
-  assert.ok(!fetch.calls.some(c => c.path.includes('/profile') && c.path.includes('me')));
-
-  const fetch2 = fakeFetch();
-  const p2 = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch: fetch2,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  fetch2.respondJson({ id: 'abcdefgh-1234', username: 'ignored_user' }); // no nickname
-  const name2 = await p2.loadProfile();
-  assert.equal(name2, 'Player abcdefgh');
-  const fetch3 = fakeFetch();
-  const p3 = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch: fetch3,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  fetch3.respond404(); // profile missing
-  assert.equal(await p3.loadProfile(), 'Player abcdefgh');
-});
-
-test('cloud save: debounced PUT with zip+base64 payload, decodable by a strict reader', async () => {
-  const jwt = makeJwt({ sub: 'u1', game_scope: 'lantern-bingo' });
-  const fetch = fakeFetch();
-  const timers = fakeTimers();
-  const p = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  const doc = { version: 1, settings: { theme: 'jade' }, progress: { gamesPlayed: 9 } };
-  const seen = [];
-  p.onSync((s) => seen.push(s));
-  p.pushCloud(doc);
-  p.pushCloud(doc); // second push resets the debounce
-  assert.equal(fetch.calls.length, 0);
-  timers.run(1999);
-  assert.equal(fetch.calls.length, 0);
-  fetch.respondJson({ ok: true });
-  timers.run(2000);
-  assert.equal(fetch.calls.length, 1, 'debounced PUT fired');
-  assert.equal(fetch.calls[0].path, '/api/v1/me/cloud-saves/lantern-bingo');
-  assert.equal(fetch.calls[0].opts.method, 'PUT');
-  assert.deepEqual(seen, ['saving'], 'status reports saving until the PUT resolves');
-  const body = JSON.parse(fetch.calls[0].opts.body);
-  // strict-reader decode of the exact wire payload
-  const decoded = JSON.parse(new TextDecoder().decode(unzipFirstEntry(base64ToBytes(body.dataBase64))));
-  assert.deepEqual(decoded, doc);
-  await tick();
-  assert.deepEqual(seen, ['saving', 'synced']);
-});
-
-test('flushCloud sends immediately (pagehide) and skips when idle', async () => {
-  const jwt = makeJwt({ sub: 'u1', game_scope: 'lantern-bingo' });
-  const fetch = fakeFetch();
-  const timers = fakeTimers();
-  const p = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  await p.flushCloud();
-  assert.equal(fetch.calls.length, 0, 'nothing pending → no PUT');
-  fetch.respondJson({ ok: true });
+  assert.equal(await p.loadProfile(), null);
+  assert.equal(await p.loadCloud(), null);
+  assert.deepEqual(await p.loadSettings(), {});
+  assert.deepEqual(await p.loadBindings({ claim: ['KeyC'] }), { claim: ['KeyC'] });
   p.pushCloud({ version: 1 });
+  p.primeSettings({});
+  p.pushSettings({ theme: 'plum' });
   await p.flushCloud();
-  assert.equal(fetch.calls.length, 1, 'flush bypasses the debounce');
-});
-
-test('loadCloud: remote zip bytes win, 404 = none, corrupt remote rejected', async () => {
-  const jwt = makeJwt({ sub: 'u1', game_scope: 'lantern-bingo' });
-  const remoteDoc = { version: 1, progress: { gamesPlayed: 42 }, settings: {} };
-  const zipBytes = zipStore('save.json', new TextEncoder().encode(JSON.stringify(remoteDoc)));
-
-  const fetch = fakeFetch();
-  const timers = fakeTimers();
-  const p = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  fetch.respondZip(zipBytes);
-  assert.deepEqual(await p.loadCloud(), remoteDoc);
-
-  const fetch2 = fakeFetch();
-  const p2 = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch: fetch2,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  fetch2.respond404();
-  assert.equal(await p2.loadCloud(), null);
-
-  // base64 JSON variant also accepted
-  const fetch3 = fakeFetch();
-  const p3 = createPlatform({
-    location: fakeLocation(`https://x.starhermit.com/#game_token=${jwt}`),
-    history: fakeHistory(), fetch: fetch3,
-    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
-  });
-  fetch3.respondJson({ dataBase64: bytesToBase64(zipBytes) });
-  assert.deepEqual(await p3.loadCloud(), remoteDoc);
-});
-
-test('offline platform never touches fetch (no on-platform console errors)', async () => {
-  const fetch = fakeFetch();
-  const p = createPlatform({
-    location: fakeLocation('http://localhost:8080/'), history: fakeHistory(), fetch,
-  });
-  await p.loadProfile();
-  await p.loadCloud();
-  p.pushCloud({ version: 1 });
-  await p.flushCloud();
-  assert.equal(fetch.calls.length, 0);
+  assert.equal(p.canSignIn(), false);
+  assert.equal(p.inviteLink(), null);
+  assert.equal(fp.calls.length, 0);
   assert.equal(p.syncStatus, 'offline');
+});
+
+test('sign-in is offered on the platform host without a token', () => {
+  const fp = fakePlatform();
+  const sh = loadSdk().create({ window: fakeWindow(`https://${SLUG}.starhermit.com/`), fetch: fp.fetch });
+  const p = createPlatform({ sh, fetch: fp.fetch });
+  assert.equal(p.hosted, false);
+  assert.equal(p.canSignIn(), true);
+  assert.equal(fp.calls.length, 0);
 });

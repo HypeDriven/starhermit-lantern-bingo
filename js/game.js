@@ -635,7 +635,8 @@ class HallRenderer {
 
   render(rescale) {
     const w = this.holder.clientWidth || 320, h = this.holder.clientHeight || 240;
-    const ratio = gfxPixelRatio(this.g);
+    // the canvas sits in the zoomed page (ui-scale.js): its backing store follows the zoom
+    const ratio = gfxPixelRatio(this.g) * ((window.UIScale && window.UIScale.value) || 1);
     if (w !== this.size[0] || h !== this.size[1] || ratio !== this.pixelRatio || rescale || this._needsResize) {
       this._needsResize = false;
       this.size = [w, h];

@@ -3,8 +3,14 @@ html, body {
   margin: 0; padding: 0; min-height: 100%;
   background: #0f1226; color: #e8ecff;
   font-family: "Segoe UI", Roboto, Arial, sans-serif;
-  overflow-x: hidden;
+  /* clip, not hidden: hidden would make body a scroll container and break the sticky
+     results actions and portrait action tray */
+  overflow-x: hidden; overflow-x: clip;
 }
+/* Large screens: ui-scale.js sets --ui-scale (exactly 1 up to 1600x1000); the whole page,
+   including the pause dialog, toast and fps meter, zooms by it. Every vw/vh length in this
+   stylesheet is divided by --ui-scale because zoom multiplies viewport units. */
+body { zoom: var(--ui-scale, 1); }
 :root {
   --accent: #ffd7a0;
   --accent-2: #ffb454;
@@ -36,20 +42,20 @@ kbd {
   padding: 0 5px; font-size: 0.8em; font-family: inherit;
 }
 
-#app { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+#app { display: flex; flex-direction: column; min-height: calc(100vh / var(--ui-scale, 1)); min-height: calc(100dvh / var(--ui-scale, 1)); }
 .topbar { padding: calc(var(--sat-top) + 8px) calc(var(--sat-right) + 8px) 0 calc(var(--sat-left) + 8px); }
 .game-title {
-  font-size: clamp(22px, 3vw, 34px); margin: 4px 0; text-align: center;
+  font-size: clamp(22px, calc(3vw / var(--ui-scale, 1)), 34px); margin: 4px 0; text-align: center;
   letter-spacing: 1px; color: var(--accent);
 }
-.status-line { min-height: 1.4em; text-align: center; margin: 2px 0; font-size: clamp(14px, 1.6vw, 19px); }
+.status-line { min-height: 1.4em; text-align: center; margin: 2px 0; font-size: clamp(14px, calc(1.6vw / var(--ui-scale, 1)), 19px); }
 .captions { min-height: 1.2em; text-align: center; margin: 0; font-size: 0.85em; opacity: 0.75; font-style: italic; }
 
 main { flex: 1; display: flex; flex-direction: column; padding: 0 calc(var(--sat-right) + 8px) calc(var(--sat-bottom) + 8px) calc(var(--sat-left) + 8px); }
 .screen { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 1100px; width: 100%; margin: 0 auto; }
 .screen[hidden] { display: none; }
 .screen h2 { color: var(--accent); margin: 8px 0 0; }
-.title-hero { font-size: clamp(56px, 10vw, 96px); line-height: 1.2; }
+.title-hero { font-size: clamp(56px, calc(10vw / var(--ui-scale, 1)), 96px); line-height: 1.2; }
 
 /* Title key art: painted lantern hall behind the menu. Purely decorative —
    the page background colour stays underneath if the image fails to load,
@@ -67,19 +73,19 @@ body.high-contrast #screen-title { background-image: none; }
 
 /* Results key art banner */
 .results-art {
-  width: min(94vw, 640px); border-radius: 14px; display: block;
+  width: min(calc(94vw / var(--ui-scale, 1)), 640px); border-radius: 14px; display: block;
   aspect-ratio: 16 / 9; object-fit: cover;
 }
 body.high-contrast .results-art { display: none; }
 @media (max-height: 500px) and (orientation: landscape) { .results-art { display: none; } }
 
-.menu-col { display: flex; flex-direction: column; gap: 10px; width: min(92vw, 340px); }
+.menu-col { display: flex; flex-direction: column; gap: 10px; width: min(calc(92vw / var(--ui-scale, 1)), 340px); }
 .row-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
 
 button { touch-action: manipulation; }
 .menu-btn, .tray-btn {
   background: var(--panel-2); color: var(--ink); border: 2px solid transparent;
-  border-radius: 10px; font-size: clamp(15px, 1.6vw, 18px);
+  border-radius: 10px; font-size: clamp(15px, calc(1.6vw / var(--ui-scale, 1)), 18px);
   padding: 10px 16px; min-height: 44px; min-width: 44px; cursor: pointer;
 }
 .menu-btn:hover, .tray-btn:hover { background: var(--panel-3); }
@@ -89,15 +95,15 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--accent
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .panel {
-  background: var(--panel); border-radius: 14px; padding: clamp(14px, 3vw, 24px);
-  width: min(94vw, 640px); box-shadow: 0 10px 40px rgba(0,0,0,.4);
+  background: var(--panel); border-radius: 14px; padding: clamp(14px, calc(3vw / var(--ui-scale, 1)), 24px);
+  width: min(calc(94vw / var(--ui-scale, 1)), 640px); box-shadow: 0 10px 40px rgba(0,0,0,.4);
 }
 
 /* Stage / lesson lists */
 .stage-list {
-  list-style: none; padding: 0; margin: 0; width: min(94vw, 640px);
+  list-style: none; padding: 0; margin: 0; width: min(calc(94vw / var(--ui-scale, 1)), 640px);
   display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;
-  max-height: 60vh; overflow-y: auto;
+  max-height: calc(60vh / var(--ui-scale, 1)); overflow-y: auto;
 }
 .stage-list li button {
   width: 100%; min-height: 56px; background: var(--panel-2); color: var(--ink);
@@ -132,7 +138,11 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .hint-text { order: 2; }
 #canvas-holder {
   order: 3;
-  width: min(100%, 640px, calc((100dvh - 420px) * 4 / 3)); aspect-ratio: 4 / 3;
+  /* height = viewport − card − the ~300px of title, call banner, hint and action tray, so the
+     tray stays on screen; the card itself is min(480px, 100dvh − 300px) tall. */
+  --lb-vh: calc(100dvh / var(--ui-scale, 1));
+  width: min(100%, 640px, calc((var(--lb-vh) - 300px - min(480px, var(--lb-vh) - 300px) - var(--lb-hall-gap, 0px)) * 4 / 3));
+  aspect-ratio: 4 / 3;
   min-height: 0;
   border-radius: 14px; overflow: hidden; background: #000;
 }
@@ -141,7 +151,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .call-banner {
   display: flex; align-items: baseline; gap: 14px; justify-content: center;
-  font-size: clamp(18px, 2.4vw, 26px);
+  font-size: clamp(18px, calc(2.4vw / var(--ui-scale, 1)), 26px);
 }
 #call-display {
   display: inline-flex; align-items: center; justify-content: center;
@@ -152,12 +162,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* DOM card — the accessible, authoritative interaction surface */
 .card-grid {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
-  width: 100%; max-width: min(480px, calc(100dvh - 300px));
+  width: 100%; max-width: min(480px, calc(calc(100dvh / var(--ui-scale, 1)) - 300px));
 }
 .card-cell {
   aspect-ratio: 1; border: none; border-radius: 10px; cursor: pointer;
   background: var(--panel-2); color: var(--ink);
-  font-size: clamp(16px, 2.6vw, 26px); font-weight: 700;
+  font-size: clamp(16px, calc(2.6vw / var(--ui-scale, 1)), 26px); font-weight: 700;
   display: flex; align-items: center; justify-content: center;
   min-width: 44px; min-height: 44px; position: relative;
 }
@@ -182,6 +192,12 @@ body.reduced-motion .card-cell.markable { animation: none; }
 body.left-handed .action-tray { flex-direction: row-reverse; }
 
 /* Results */
+/* The breakdown, ranking and achievements can run past the fold: keep Retry / Continue on screen. */
+#screen-results .row-actions {
+  position: sticky; bottom: 0; z-index: 1; width: 100%; margin-top: 0;
+  padding: 14px 0 calc(var(--sat-bottom) + 8px);
+  background: linear-gradient(rgba(15, 18, 38, 0), #0f1226 40%);
+}
 #results-body h3 { color: var(--accent); margin-bottom: 4px; }
 .score-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
 .score-table td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,.12); }
@@ -198,7 +214,7 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
 .settings-form select { background: var(--panel-2); color: var(--ink); border: none; border-radius: 6px; padding: 6px 10px; min-height: 36px; }
 
 /* Help */
-.help-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; width: min(94vw, 900px); }
+.help-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; width: min(calc(94vw / var(--ui-scale, 1)), 900px); }
 .rule-card { background: var(--panel-2); border-radius: 10px; padding: 12px 14px; }
 .rule-card h3 { margin: 0 0 6px; color: var(--accent); }
 .rule-card p { margin: 0; font-size: 0.95em; }
@@ -209,10 +225,11 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
   border: none; padding: calc(var(--sat-top) + 16px) calc(var(--sat-right) + 16px) calc(var(--sat-bottom) + 16px) calc(var(--sat-left) + 16px);
   max-width: none; max-height: none; width: 100%; height: 100%;
 }
+#modal-root[open] { display: flex; } /* .modal-inner's margin:auto centres it both ways */
 #modal-root::backdrop { background: rgba(5, 8, 24, 0.72); }
 .modal-inner {
-  background: var(--panel); border-radius: 14px; padding: clamp(16px, 3vw, 28px);
-  width: min(92vw, 560px); margin: auto; max-height: 85vh; overflow-y: auto;
+  background: var(--panel); border-radius: 14px; padding: clamp(16px, calc(3vw / var(--ui-scale, 1)), 28px);
+  width: min(calc(92vw / var(--ui-scale, 1)), 560px); margin: auto; max-height: calc(85vh / var(--ui-scale, 1)); overflow-y: auto;
   box-shadow: 0 10px 40px rgba(0,0,0,.5);
 }
 #modal-title { margin-top: 0; color: var(--accent); text-align: center; }
@@ -221,7 +238,7 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
 /* Countdown overlay */
 .countdown-num {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: clamp(64px, 14vw, 128px); font-weight: 900; color: var(--accent);
+  font-size: clamp(64px, calc(14vw / var(--ui-scale, 1)), 128px); font-weight: 900; color: var(--accent);
   pointer-events: none; text-shadow: 0 4px 24px rgba(0,0,0,.6);
 }
 
@@ -246,11 +263,11 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
 @media (max-height: 500px) and (orientation: landscape) {
   /* rails beside the card; card height-bounded so the call banner and tray share the viewport */
   .play-layout { grid-template-columns: minmax(120px, 170px) 1fr minmax(120px, 170px); gap: 8px; }
-  .rail { display: block; padding: 6px 8px; font-size: 0.85em; max-height: calc(100vh - 120px); overflow: auto; }
+  .rail { display: block; padding: 6px 8px; font-size: 0.85em; max-height: calc(calc(100vh / var(--ui-scale, 1)) - 120px); overflow: auto; }
   .roster { flex-direction: column; }
   #canvas-holder { display: none; }
-  .card-grid { max-width: min(480px, calc(100vh - 175px)); gap: 4px; }
-  .card-cell { font-size: clamp(13px, 2vw, 18px); min-width: 36px; min-height: 36px; }
+  .card-grid { max-width: min(480px, calc(calc(100vh / var(--ui-scale, 1)) - 175px)); gap: 4px; }
+  .card-cell { font-size: clamp(13px, calc(2vw / var(--ui-scale, 1)), 18px); min-width: 36px; min-height: 36px; }
   .call-banner { font-size: 18px; }
   .game-title { font-size: 20px; }
   .action-tray { padding: 4px 0; }
@@ -335,13 +352,13 @@ body.gfx-detailed.gfx-animated:not(.reduced-motion):not(.high-contrast) .title-h
 @media (prefers-reduced-motion: reduce) { .title-hero { animation: none !important; } }
 
 /* StarHermit account controls (title) + toast */
-.account-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: min(92vw, 340px); }
+.account-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: min(calc(92vw / var(--ui-scale, 1)), 340px); }
 .account-actions:not(:has(button:not([hidden]))) { display: none; }
 .account-actions .menu-btn { flex: 1 1 100%; }
 .sh-toast {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(16px + var(--sat-bottom)); z-index: 50;
-  max-width: min(92vw, 420px); margin: 0; padding: 10px 16px; border-radius: 10px;
+  max-width: min(calc(92vw / var(--ui-scale, 1)), 420px); margin: 0; padding: 10px 16px; border-radius: 10px;
   background: var(--panel-2); color: var(--ink); border: 1px solid var(--accent-2);
   box-shadow: 0 6px 20px rgba(0, 0, 0, .45); text-align: center;
 }

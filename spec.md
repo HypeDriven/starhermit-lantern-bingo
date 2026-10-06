@@ -274,7 +274,15 @@ from pause return to the pause modal rather than the title, so a paused round is
 
 **Desktop (≥1024 px).** Three-column play grid: objective rail (target, description, calls/lines/
 marks, running score) | playfield (3D hall, call banner, 5×5 card, hint line) | roster rail. The
-card is capped at 480 px and the hall at `min(640px, 62vh)`, so both stay above the tray.
+card is capped at `min(480px, 100vh − 300px)`; the hall is shown only on viewports taller than
+900 px and takes the height left under the card (4:3, at most 640 px wide), so the tray always stays
+on screen. The pause dialog is centred, and the results Retry / Copy Replay / Continue row is
+`position: sticky` at the bottom, so it stays visible when the breakdown runs past the fold.
+
+**Large screens (above 1600×1000).** `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000)`,
+capped at 2.5) and `body` is CSS-`zoom`ed by it, so the whole page (dialog, toast and fps meter
+included) renders as the ~1600–1778×1000 layout magnified; every vw/vh length is divided by
+`--ui-scale` and the 3D hall multiplies its pixel ratio by `UIScale.value`.
 
 **Tablet / small desktop (<1024 px).** The play grid collapses to one column; the roster rail moves
 below the playfield (`order: 3`) so the card stays in the upper half of the screen.

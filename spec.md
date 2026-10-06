@@ -291,8 +291,12 @@ below the playfield (`order: 3`) so the card stays in the upper half of the scre
 at the bottom over a gradient so Call/Claim are always reachable with a thumb.
 
 **Landscape mobile (≤500 px tall).** Rails narrow to 120–170 px, the hall is capped at 40vw, cell
-type shrinks, the title drops to 20 px, and the results key art is hidden — the card and the tray
-must both fit without scrolling.
+type shrinks, the title drops to 20 px (and is hidden during play, leaving the status and caption
+lines), the play column gaps tighten to 4 px, and the results key art is hidden — the card and the
+tray fit a 390 px-tall screen without scrolling.
+
+**Toast.** The account toast (`#sh-toast`) sits at the top edge over the topbar, so it never covers
+the play tray or the results actions.
 
 **Safe areas.** `viewport-fit=cover` plus `--sat-*` tokens from `env(safe-area-inset-*)` pad the
 topbar, main, tray and modal. **Never cut off:** the 5×5 card, the Call/Claim buttons, the call

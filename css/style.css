@@ -272,6 +272,13 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
   .game-title { font-size: 20px; }
   .action-tray { padding: 4px 0; }
   .tray-btn { min-height: 40px; padding: 4px 10px; }
+  /* play fits one ~390px screen: the hall title gives way to the board
+     (status line and captions stay), and the column gaps tighten */
+  body:has(#screen-play:not([hidden])) .game-title { display: none; }
+  body:has(#screen-play:not([hidden])) .topbar { padding-top: calc(var(--sat-top) + 4px); }
+  .play-screen { gap: 4px; }
+  .playfield { gap: 4px; }
+  .hint-text { margin: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -357,7 +364,9 @@ body.gfx-detailed.gfx-animated:not(.reduced-motion):not(.high-contrast) .title-h
 .account-actions .menu-btn { flex: 1 1 100%; }
 .sh-toast {
   position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(16px + var(--sat-bottom)); z-index: 50;
+  /* top edge, over the topbar's title/status: at the bottom it covered the
+     results actions and the play tray */
+  top: calc(8px + var(--sat-top)); z-index: 50;
   max-width: min(calc(92vw / var(--ui-scale, 1)), 420px); margin: 0; padding: 10px 16px; border-radius: 10px;
   background: var(--panel-2); color: var(--ink); border: 1px solid var(--accent-2);
   box-shadow: 0 6px 20px rgba(0, 0, 0, .45); text-align: center;

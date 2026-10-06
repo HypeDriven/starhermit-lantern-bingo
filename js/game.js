@@ -782,6 +782,7 @@ function showScreen(name) {
   if (name === 'title') titleFx.kick();
   const first = $('#screen-' + name + ' button');
   if (first) first.focus({ preventScroll: true });
+  window.scrollTo(0, 0); // screens share the document scroll: each opens at its top
 }
 
 // ---------------------------------------------------------------- modal

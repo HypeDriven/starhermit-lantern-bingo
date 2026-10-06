@@ -293,7 +293,9 @@ at the bottom over a gradient so Call/Claim are always reachable with a thumb.
 **Landscape mobile (≤500 px tall).** Rails narrow to 120–170 px, the hall is capped at 40vw, cell
 type shrinks, the title drops to 20 px (and is hidden during play, leaving the status and caption
 lines), the play column gaps tighten to 4 px, and the results key art is hidden — the card and the
-tray fit a 390 px-tall screen without scrolling.
+tray fit a 390 px-tall screen without scrolling. The main menu lays its nine buttons out in a
+3×3 grid under a smaller lantern, so the whole title screen fits 390 px too. Every screen change
+resets the page scroll, so Settings, Help and the other screens open at their top.
 
 **Toast.** The account toast (`#sh-toast`) sits at the top edge over the topbar, so it never covers
 the play tray or the results actions.

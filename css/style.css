@@ -279,6 +279,12 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
   .play-screen { gap: 4px; }
   .playfield { gap: 4px; }
   .hint-text { margin: 0; }
+  /* title menu fits one ~390px screen: three columns of buttons, smaller lantern */
+  #screen-title { gap: 6px; padding: 6px 0; }
+  .title-hero { font-size: 40px; line-height: 1; }
+  .menu-col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: min(calc(92vw / var(--ui-scale, 1)), 600px); }
+  #screen-title .menu-btn { min-height: 40px; padding: 6px 10px; }
+  #title-progress, #account-line { margin: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

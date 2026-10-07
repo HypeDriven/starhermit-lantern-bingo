@@ -199,6 +199,7 @@ body.left-handed .action-tray { flex-direction: row-reverse; }
   background: linear-gradient(rgba(15, 18, 38, 0), #0f1226 40%);
 }
 #results-body h3 { color: var(--accent); margin-bottom: 4px; }
+.results-lb { margin: 8px 0 0; font-weight: 700; color: var(--accent); text-align: center; }
 .score-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
 .score-table td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,.12); }
 .score-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }

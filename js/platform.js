@@ -4,7 +4,8 @@
 // from starhermit-sdk.js before this module). The SDK owns the launch token,
 // renewal, profile lookup and the game:<slug> cloud-save slot; this adapter
 // keeps the game's existing API (hosted, nickname, syncStatus, pushCloud …)
-// and adds settings mirroring, key bindings, sign-in and invite links.
+// and adds settings mirroring, key bindings, sign-in, invite links and
+// posting a finished round to the `high-score` leaderboard.
 // Without a token nothing here touches the network.
 
 const SETTINGS_DEBOUNCE_MS = 1500;
@@ -123,6 +124,18 @@ export function createPlatform(deps = {}) {
   platform.renewForReconnect = () => sh.renewForReconnect();
   platform.relaunch = () => sh.relaunch();
   platform.inviteLink = () => (sh.signedIn ? sh.inviteLink() : null);
+  // Post a finished solo round to the `high-score` board through the game's
+  // score-script.js (StarHermit.submitScores) → { posted, rank }.
+  platform.submitScore = async (total) => {
+    if (!sh.signedIn) return { posted: false, rank: null };
+    const keys = await sh.submitScores({ 'high-score': total });
+    if (!keys || !keys.includes('high-score')) return { posted: false, rank: null };
+    try {
+      const r = await sh.leaderboard('high-score', { pageSize: 100 });
+      const me = (r.items || []).find((i) => i.userId === sh.userId);
+      return { posted: true, rank: me ? me.rank : null };
+    } catch (_) { return { posted: true, rank: null }; }
+  };
 
   const attach = deps.onPageHide;
   if (typeof attach === 'function') attach(() => { platform.flushCloud(); flushSettings(); });

@@ -1271,6 +1271,22 @@ function showResults(winnerId, unlocked) {
   if (unlocked.length) setTimeout(() => audio.event('achievement'), 450);
   showScreen('results');
   announce(won ? 'You won the round' : 'Round over');
+  postToLeaderboard(app.mode === 'learn' ? null : Math.max(0, sb.total));
+}
+
+// Signed in only: post a finished solo round (every mode but Learn) to the
+// `high-score` board and show the player's rank on the results screen.
+function postToLeaderboard(total) {
+  const line = $('#results-lb');
+  if (total == null || !platform.hosted) { line.hidden = true; return; }
+  line.hidden = false;
+  line.textContent = shT.lbPosting;
+  const session = app.session;
+  platform.submitScore(total).then((r) => {
+    if (app.session !== session) return;
+    line.textContent = !r.posted ? shT.lbNotPosted
+      : r.rank ? shT.lbRank.replace('{rank}', r.rank) : shT.lbPosted;
+  });
 }
 
 function nextRecommendation() {
@@ -1783,6 +1799,7 @@ function showHostedResults(winner) {
   $('#results-retry').hidden = true;
   $('#results-replay').hidden = true;
   $('#results-next').textContent = 'Continue';
+  $('#results-lb').hidden = true;
   $('#results-body').innerHTML = `
     <h3>${won ? '🏮 Bingo! You lit the hall.' : winner ? hostedName(winner) + ' claimed first.' : 'Round ended.'}</h3>
     <p class="muted">Authoritative result from the hall host · Reason: ${state.terminalReason}</p>

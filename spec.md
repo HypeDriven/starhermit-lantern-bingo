@@ -39,7 +39,8 @@ pattern close, and slam CLAIM before the other lanterns do.
 | `js/platform.js` | Adapter over the SDK: hosted flag, nickname, cloud-save mirror + sync status, settings-KV mirroring, key bindings, sign-in/invite, Bearer fetch for the rooms lobby. No-op without a token. |
 | `js/sh-strings.js` | Account-control strings in the nine locales. |
 | `js/hallnet.js` | Realtime-rooms hall: REST lobby (quick-join/create/open/leave/result/mine), binary frame codec (server-stamped 16-byte sender prefix), guest throttles, and `HallHost` — the host-side caller/rounds runner. |
-| `server.js` | StarHermit `server=` script: static host, a dev-only `/api/v1/time` clock probe, and a dependency-free RFC6455 WebSocket hall for local play (no token). |
+| `score-script.js` | StarHermit platform script (`server=score-script.js`): range-checks a finished solo round's total and posts it to the `high-score` leaderboard (canonical copy in the games repo's `tools/score-script.js`). |
+| `server.js` | Local dev host: static files, a dev-only `/api/v1/time` clock probe, and a dependency-free RFC6455 WebSocket hall for local play (no token). |
 | `sfx/` | 18 Opus one-shots + `manifest.txt` (canonical) / `manifest.json` (loader + generator input) / `manifest.md`. |
 | `assets/` | `title-hall.webp`, `results-lantern.webp` key art. |
 | `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js`, `gfx.test.js` (`npm test`), `e2e.mjs` (real-UI playthrough incl. Graphics presets/override/persistence at desktop + mobile and a tall-desktop 3D hall pass under Ultra and Low), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, plus older smoke harnesses. |
@@ -444,7 +445,7 @@ German and French expansion fit without a new breakpoint).
 
 ## 12. StarHermit integration
 
-`starhermit.txt` declares `name`, `launch=index.html`, `owner`, `server=server.js`, `cover`,
+`starhermit.txt` declares `name`, `launch=index.html`, `owner`, `server=score-script.js`, `cover`,
 and one `control.<action>=<Code> | <Label>` line per keyboard action (left/right/up/down, mark,
 call, claim, undo, hint, pause, camera, back).
 
@@ -486,10 +487,15 @@ and the game plays exactly as offline.
 The account-control strings (sign-in, invite, toasts, "Playing as", session-expired dialog) are localized in the nine
 locales (`js/sh-strings.js`).
 
-**Not used:** gameplay sessions, matchmaking queues, friend-picker invites, session chat,
-platform achievements, leaderboards and replays — `server.js` is a standalone Node host, not a
-platform game script, so it declares no achievements, scores or replays and there are no
-platform sessions to join. Achievements and personal bests stay local and travel in the cloud save.
+**Leaderboard.** One board, `high-score` (integer, higher is better, 0–100,000). When signed in,
+every finished solo round except Learn posts its total (floored at 0) through
+`StarHermit.submitScores` (a practice session whose `score-script.js` posts it), and the results
+screen shows "Leaderboard rank: #N" (or posted / not posted), localized in the nine locales
+(`js/sh-strings.js`). Hosted halls and standalone play post nothing.
+
+**Not used:** matchmaking queues, friend-picker invites, session chat, platform achievements and
+replays — the only platform session is the short practice session that posts a score.
+Achievements and personal bests stay local and travel in the cloud save.
 
 ---
 

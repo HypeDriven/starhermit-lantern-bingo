@@ -13,6 +13,10 @@ const en = {
   expiredBody: 'Your StarHermit session has expired, so you have left the hall. Progress keeps saving on this device.',
   relaunch: 'Back to StarHermit',
   notNow: 'Not now',
+  lbPosting: 'Posting score to the leaderboard…',
+  lbRank: 'Leaderboard rank: #{rank}',
+  lbPosted: 'Score posted to the leaderboard.',
+  lbNotPosted: 'Score not posted to the leaderboard.',
 };
 const es = {
   signIn: 'Iniciar sesión con StarHermit',
@@ -25,9 +29,14 @@ const es = {
   expiredBody: 'Tu sesión de StarHermit ha caducado y has salido de la sala. El progreso se sigue guardando en este dispositivo.',
   relaunch: 'Volver a StarHermit',
   notNow: 'Ahora no',
+  lbPosting: 'Enviando la puntuación a la clasificación…',
+  lbRank: 'Puesto en la clasificación: #{rank}',
+  lbPosted: 'Puntuación enviada a la clasificación.',
+  lbNotPosted: 'No se ha enviado la puntuación a la clasificación.',
 };
 const es419 = {
   ...es,
+  lbNotPosted: 'No se envió la puntuación a la clasificación.',
   copyFailed: 'No se pudo copiar el enlace de invitación',
   signedOut: 'Se cerró la sesión de StarHermit: el progreso se sigue guardando en este dispositivo',
   expiredTitle: 'Tu sesión expiró',
@@ -44,8 +53,15 @@ const fr = {
   expiredBody: 'Votre session StarHermit a expiré : vous avez quitté la salle. La progression reste enregistrée sur cet appareil.',
   relaunch: 'Retour à StarHermit',
   notNow: 'Plus tard',
+  lbPosting: 'Envoi du score au classement…',
+  lbRank: 'Rang au classement : #{rank}',
+  lbPosted: 'Score envoyé au classement.',
+  lbNotPosted: 'Score non envoyé au classement.',
 };
-const frCA = { ...fr, signedOut: 'Déconnecté de StarHermit — la progression reste sauvegardée sur cet appareil' };
+const frCA = {
+  ...fr,
+  lbPosting: 'Envoi du pointage au classement…', lbPosted: 'Pointage envoyé au classement.', lbNotPosted: 'Pointage non envoyé au classement.',
+  signedOut: 'Déconnecté de StarHermit — la progression reste sauvegardée sur cet appareil' };
 
 export const SH_STRINGS = {
   'en-US': en,
@@ -63,6 +79,10 @@ export const SH_STRINGS = {
     expiredBody: 'Deine StarHermit-Sitzung ist abgelaufen, daher hast du den Saal verlassen. Der Fortschritt wird weiter auf diesem Gerät gespeichert.',
     relaunch: 'Zurück zu StarHermit',
     notNow: 'Nicht jetzt',
+    lbPosting: 'Punktzahl wird an die Bestenliste gesendet …',
+    lbRank: 'Platz in der Bestenliste: #{rank}',
+    lbPosted: 'Punktzahl an die Bestenliste gesendet.',
+    lbNotPosted: 'Punktzahl nicht an die Bestenliste gesendet.',
   },
   'fr-FR': fr,
   'fr-CA': frCA,
@@ -77,6 +97,10 @@ export const SH_STRINGS = {
     expiredBody: 'Sua sessão do StarHermit expirou e você saiu do salão. O progresso continua salvo neste dispositivo.',
     relaunch: 'Voltar ao StarHermit',
     notNow: 'Agora não',
+    lbPosting: 'Enviando a pontuação para o ranking…',
+    lbRank: 'Posição no ranking: #{rank}',
+    lbPosted: 'Pontuação enviada para o ranking.',
+    lbNotPosted: 'A pontuação não foi enviada para o ranking.',
   },
   'it-IT': {
     signIn: 'Accedi con StarHermit',
@@ -89,6 +113,10 @@ export const SH_STRINGS = {
     expiredBody: 'La tua sessione StarHermit è scaduta, quindi hai lasciato la sala. I progressi restano salvati su questo dispositivo.',
     relaunch: 'Torna a StarHermit',
     notNow: 'Non ora',
+    lbPosting: 'Invio del punteggio alla classifica…',
+    lbRank: 'Posizione in classifica: #{rank}',
+    lbPosted: 'Punteggio inviato alla classifica.',
+    lbNotPosted: 'Punteggio non inviato alla classifica.',
   },
 };
 

@@ -63,6 +63,7 @@ const defaultSave = () => ({
 
 const store = {
   data: defaultSave(),
+  cloudHold: false, cloudHeld: false,
   load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
@@ -84,7 +85,10 @@ const store = {
   save() {
     this._writeLocal();
     if (platform.hosted) {
-      platform.pushCloud(this.data); // debounced mirror
+      // Held during the boot cloud load: a doc queued then would still be PUT
+      // after the remote one is adopted, over the newer cloud save.
+      if (this.cloudHold) this.cloudHeld = true;
+      else platform.pushCloud(this.data); // debounced mirror
       platform.pushSettings(this.data.settings); // per-player settings KV (changed keys only)
     }
   },
@@ -2243,9 +2247,14 @@ function boot() {
     });
     platform.loadBindings(DEFAULT_BINDINGS).then(setBindings);
     // Remote-first: cloud save, then the settings KV on top (platform wins).
-    Promise.all([platform.loadCloud(), platform.loadSettings()]).then(([remote, kv]) => {
+    store.cloudHold = true;
+    Promise.all([platform.loadCloud(), platform.loadSettings()]).catch(() => [null, null]).then(([remote, kv]) => {
       const adopted = store.adoptRemote(remote);
       const tuned = store.adoptSettings(kv);
+      // A save held during the load is stale once the remote doc is adopted.
+      store.cloudHold = false;
+      if (store.cloudHeld && !adopted) platform.pushCloud(store.data);
+      store.cloudHeld = false;
       platform.primeSettings(store.data.settings);
       if (!adopted && !tuned) return;
       applyAudioSettings();

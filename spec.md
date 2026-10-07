@@ -462,7 +462,8 @@ and the game plays exactly as offline.
 - **Identity.** The title account line shows "Playing as <nickname>" (profile `nickname`, falling
   back to `Player <id prefix>`) plus the cloud sync status; hosted-hall seats use the same name.
 - **Cloud save.** The checksummed localStorage doc is mirrored to the `game:<slug>` cloud-save
-  slot: remote wins on boot, saves debounce ~2 s, `pagehide`/hidden tab flush with keepalive.
+  slot: remote wins on boot (a save made while that load runs is held, then dropped if the remote
+  doc was adopted or pushed if not), saves debounce ~2 s, `pagehide`/hidden tab flush with keepalive.
   localStorage stays the offline cache.
 - **Settings KV.** Every top-level preference (volumes, mute, theme, graphics, reduced motion,
   high contrast, larger text, left-handed tray, call speed, auto-hint) is patched to the
@@ -511,8 +512,8 @@ on the clipboard (with a `prompt()` fallback).
 parse error silently restores defaults rather than throwing. Saved: all settings, `journeyDone`,
 `lessonsDone`, `bestScores` per content id, `dailyHistory` per day, achievements, `gamesPlayed`.
 Reset progress clears progress only and keeps settings. In hosted mode the same doc is mirrored
-to the platform cloud-save slot (zip+base64): remote wins on boot, local writes debounce ~2 s to
-a PUT, and `pagehide` flushes pending saves. localStorage remains the offline cache.
+to the platform cloud-save slot (zip+base64): remote wins on boot (nothing is pushed until that load
+settles), local writes debounce ~2 s to a PUT, and `pagehide` flushes pending saves. localStorage remains the offline cache.
 
 **Rendering budget.** Pixel ratio = min(devicePixelRatio, preset cap) × render scale × adaptive
 scale, with caps Low 1, Balanced 1.5, High/Ultra 2 (Ultra also ×1.25). Low: no shadows, no post,

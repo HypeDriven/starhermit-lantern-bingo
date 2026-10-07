@@ -118,6 +118,10 @@ export function createPlatform(deps = {}) {
   platform.loadBindings = (defaults) => (sh.signedIn ? sh.loadBindings(defaults) : Promise.resolve(defaults));
   platform.canSignIn = () => sh.canSignIn();
   platform.signIn = () => sh.signIn();
+  // Socket reconnects: renew first ('renewed' | 'retry' | 'relaunch'); relaunch()
+  // must run from a click (top-window navigation needs a user gesture).
+  platform.renewForReconnect = () => sh.renewForReconnect();
+  platform.relaunch = () => sh.relaunch();
   platform.inviteLink = () => (sh.signedIn ? sh.inviteLink() : null);
 
   const attach = deps.onPageHide;

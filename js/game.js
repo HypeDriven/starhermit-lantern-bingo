@@ -15,7 +15,7 @@ import {
 } from './content.js';
 import { AudioEngine } from './audio.js';
 import { createPlatform } from './platform.js';
-import { RoomsClient, HallHost } from './hallnet.js';
+import { RoomsClient, HallHost, renewThenReconnect } from './hallnet.js';
 import {
   PRESETS, CATEGORIES, SHADOW_MAP, LANTERN_COUNT, detectPreset, resolve, presetTier, choosePreset, describe,
 } from './gfx.js';
@@ -1390,7 +1390,12 @@ async function startHostedRooms(reconnect) {
   setStatus(reconnect ? 'Reconnecting to hall…' : 'Finding a hall…');
   try {
     if (!platform.nickname) await platform.loadProfile();
-    if (!roomsClient) roomsClient = new RoomsClient({ api: platform.api, loc: location });
+    if (!roomsClient) {
+      roomsClient = new RoomsClient({
+        api: platform.api, loc: location,
+        getToken: () => platform.token, renew: () => platform.renewForReconnect(),
+      });
+    }
     let room = null, created = false;
     if (reconnect) {
       const mine = await roomsClient.mine();
@@ -1398,7 +1403,7 @@ async function startHostedRooms(reconnect) {
     }
     if (!room) ({ room, created } = await roomsClient.quickJoinOrCreate(platform.slug));
     const roomId = roomsClient.roomId(room);
-    const socket = await roomsClient.connect(roomId, platform.token);
+    const socket = await roomsClient.connect(roomId);
     socket.observeRoom(room);
     const selfId = await socket.resolveSelf();
     if (!selfId) throw new Error('no participant id');
@@ -1409,6 +1414,41 @@ async function startHostedRooms(reconnect) {
   } catch (e) {
     hostedFail();
   }
+}
+
+// Guest reconnect: wait, renew the launch token, then reopen with the fresh
+// token. A transient renewal failure waits and renews again (never reopens the
+// stale URL); a dead token ends hosted play with the session-expired prompt.
+const HALL_RECONNECT_MS = 1500;
+const HALL_RENEW_ATTEMPTS = 5;
+function hallReconnectWanted() { return app.mode === 'hosted' && app.gamePhase === 'active'; }
+function scheduleHallReconnect(attempt) {
+  setTimeout(() => {
+    if (!hallReconnectWanted()) return;
+    renewThenReconnect({
+      renew: () => roomsClient.renew(),
+      reopen: () => { if (hallReconnectWanted()) startHostedRooms(true); },
+      onRetry: () => {
+        if (!hallReconnectWanted()) return;
+        if (attempt < HALL_RENEW_ATTEMPTS) scheduleHallReconnect(attempt + 1);
+        else hostedFail();
+      },
+      onRelaunch: showSessionExpired,
+    });
+  }, HALL_RECONNECT_MS);
+}
+
+// The launch token can no longer be renewed: leave the hall and offer the
+// way back (relaunch() needs this click's user gesture).
+function showSessionExpired() {
+  if (app.mode === 'hosted') abandonRound();
+  clearTimeout(toastTimer);
+  $('#sh-toast').hidden = true; // the dialog replaces the generic signed-out toast
+  setStatus(shT.expiredTitle);
+  openModal(shT.expiredTitle, `<p>${shT.expiredBody}</p>`, [
+    { label: shT.relaunch, primary: true, onClick: () => { platform.relaunch(); } },
+    { label: shT.notNow, onClick: closeModal },
+  ]);
 }
 
 function handleHallRoster(socket, list, selfId) {
@@ -1510,9 +1550,7 @@ function enterHallAsGuest(socket, roomId, selfId, reconnect) {
     if (app.mode !== 'hosted') return;
     if (app.gamePhase === 'active' && !reconnect) {
       setStatus('Disconnected from hall. Reconnecting…');
-      setTimeout(() => {
-        if (app.mode === 'hosted' && app.gamePhase === 'active') startHostedRooms(true);
-      }, 1500);
+      scheduleHallReconnect(1);
     } else {
       hostedFail();
     }

@@ -62,11 +62,15 @@ export function decodeFrame(bytes) {
 // ---------------------------------------------------------------- REST lobby
 export class RoomsClient {
   // deps: {api} platform api helper (Bearer-injecting fetch wrapper),
-  // {wsImpl} WebSocket constructor, {loc} window.location.
-  constructor({ api, wsImpl, loc }) {
+  // {wsImpl} WebSocket constructor, {loc} window.location,
+  // {getToken} returns the CURRENT launch token (read at every socket open),
+  // {renew} StarHermit.renewForReconnect → 'renewed' | 'retry' | 'relaunch'.
+  constructor({ api, wsImpl, loc, getToken, renew }) {
     this.api = api;
     this.wsImpl = wsImpl || globalThis.WebSocket;
     this.loc = loc || globalThis.location;
+    this.getToken = getToken || (() => null);
+    this.renew = renew || (async () => 'relaunch');
   }
 
   roomId(room) { return room && (room.id || room.roomId) || null; }
@@ -118,8 +122,10 @@ export class RoomsClient {
     } catch (_) { return []; }
   }
 
-  connect(roomId, token) {
+  // Opens the room socket with the token current at open time (renewal swaps it).
+  connect(roomId) {
     return new Promise((resolve, reject) => {
+      const token = this.getToken() || '';
       const proto = this.loc && this.loc.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = this.loc ? this.loc.host : '';
       const url = `${proto}//${host}/ws/v1/realtime?roomId=${encodeURIComponent(roomId)}&access_token=${encodeURIComponent(token)}`;
@@ -132,6 +138,19 @@ export class RoomsClient {
       ws.onerror = () => { clearTimeout(timeout); reject(new Error('rooms socket failed')); };
     });
   }
+}
+
+// ---------------------------------------------------------------- reconnect
+// A refused (expired) token looks like a network drop (close 1006), so every
+// REconnect renews the launch token first and only then reopens, building the
+// URL from the fresh token. 'retry' never reopens the old URL; 'relaunch'
+// stops for good (the SDK has already signed out).
+export async function renewThenReconnect({ renew, reopen, onRetry, onRelaunch }) {
+  let outcome;
+  try { outcome = await renew(); } catch (_) { outcome = 'retry'; }
+  if (outcome === 'renewed') return reopen();
+  if (outcome === 'relaunch') return onRelaunch();
+  return onRetry();
 }
 
 // ---------------------------------------------------------------- socket

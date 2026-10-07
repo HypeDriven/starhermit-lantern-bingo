@@ -483,7 +483,7 @@ and the game plays exactly as offline.
   hall over `/ws` (local dev only — that protocol is unreachable on-platform).
 - **Cover art.** `coverart.png` (1200×675).
 
-The account-control strings (sign-in, invite, toasts, "Playing as") are localized in the nine
+The account-control strings (sign-in, invite, toasts, "Playing as", session-expired dialog) are localized in the nine
 locales (`js/sh-strings.js`).
 
 **Not used:** gameplay sessions, matchmaking queues, friend-picker invites, session chat,
@@ -530,9 +530,13 @@ holder is collapsed (compact layouts), and the title lanterns stop when the titl
 card. Context lost → `preventDefault()` plus a reload message; progress is already saved. No hall
 available → "Hosted play is unavailable right now. Try Practice instead." (hosted mode off or a
 rooms failure). Offline `/api/v1` → hosted features degrade to local play; the cloud slot is
-skipped entirely without a token. Hosted rooms socket drop mid-round → one reconnect attempt via
-`GET /rooms/mine`, then the honest unavailable message; the host leaving closes the hall for
-everyone. Missing SFX clip → synth fallback.
+skipped entirely without a token. Hosted rooms socket drop mid-round → after 1.5 s the guest
+renews the launch token (`StarHermit.renewForReconnect()`) and then makes one reconnect attempt via
+`GET /rooms/mine`, opening the socket with the fresh token; a transient renewal failure waits 1.5 s
+and renews again (up to 5 times, never reopening with the old token) before the honest unavailable
+message. If the token can no longer be renewed the guest leaves the hall to the title and a
+**Your session expired** dialog explains it, with **Back to StarHermit** (`StarHermit.relaunch()`)
+and **Not now** (keep playing locally). The host leaving closes the hall for everyone. Missing SFX clip → synth fallback.
 
 **How the e2e test drives the real UI.** `tests/e2e.mjs` serves the repo over an ephemeral port and
 drives headless Chrome through `playwright-core`. It only ever clicks visible elements —
@@ -546,7 +550,7 @@ full flow; any `pageerror` or non-noise `console.error` fails the run.
 
 ## 14. Testing and acceptance criteria
 
-`npm test` runs 47 `node --test` cases with zero dependencies:
+`npm test` runs 52 `node --test` cases with zero dependencies:
 
 - **`tests/rules.test.js` (16).** RNG determinism; card column ranges, uniqueness and free centre;
   called-set growth; `legalActions` matching the called set; invalid marks and false claims scoring
@@ -562,10 +566,13 @@ full flow; any `pageerror` or non-noise `console.error` fails the run.
   stripped and decoded; profile nickname (never username) with Bearer; cloud-save round-trip at
   `game:<slug>` with sync status; settings KV load + changed-key PATCH after priming; binding
   overrides and invite link; standalone = zero fetches; sign-in offered on the platform host.
-- **`tests/hallnet.test.js` (8).** Frame codec round-trip + caps; socket identity harvest
+- **`tests/hallnet.test.js` (13).** Frame codec round-trip + caps; socket identity harvest
   (room/roster/whoami); guest 30 msg/s throttle; host seating + bot fill; mid-round spectator →
   next-round seat; forced-identity + bounds validation + idempotent duplicates; authoritative call
-  cadence with matching snapshot hash; round-end restart; seat retention across an absent guest.
+  cadence with matching snapshot hash; round-end restart; seat retention across an absent guest; first connect uses the current token
+  without renewing; reconnect renews first and opens with the new token; `'retry'` never reopens
+  the old URL; `'relaunch'` stops and raises the session-expired prompt; prompt strings in all
+  nine locales.
 
 `npm run validate` runs the same offline validator standalone (44 items, 0 failures): it plays a
 perfect player through each stage and asserts the pattern is reachable within 75 calls and that

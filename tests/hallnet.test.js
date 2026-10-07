@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeFrame, decodeFrame, RoomsSocket, HallHost } from '../js/hallnet.js';
+import { encodeFrame, decodeFrame, RoomsSocket, HallHost, RoomsClient, renewThenReconnect } from '../js/hallnet.js';
 import { hashState } from '../js/rules.js';
 
 const STAGE = {
@@ -203,4 +203,101 @@ test('host seat survives a disconnecting guest until the next round', () => {
   host.dispatch({ type: 'forfeit', player: 'you' });
   timers.runTimeouts(15000);
   assert.equal(host.playerIdFor('guest-1'), undefined, 'absent member pruned at round start');
+});
+
+// ---------------------------------------------------------------- reconnect + token renewal
+function fakeRooms(initialToken, renewOutcome) {
+  const opened = [];
+  let token = initialToken;
+  let renews = 0;
+  class FakeWs {
+    constructor(url) { this.url = url; opened.push(url); setTimeout(() => this.onopen && this.onopen(), 0); }
+    send() {}
+    close() {}
+  }
+  const client = new RoomsClient({
+    api: async () => ({ ok: false }), wsImpl: FakeWs,
+    loc: { protocol: 'https:', host: 'play.example' },
+    getToken: () => token,
+    renew: async () => {
+      renews++;
+      const outcome = typeof renewOutcome === 'function' ? renewOutcome(renews) : renewOutcome;
+      if (outcome === 'renewed') token = 'fresh-token-' + renews;
+      if (outcome === 'relaunch') token = null;
+      return outcome;
+    },
+  });
+  return { client, opened, renewCount: () => renews };
+}
+
+test('first connect uses the current token without renewing', async () => {
+  const { client, opened, renewCount } = fakeRooms('launch-token', 'renewed');
+  await client.connect('room-1');
+  assert.equal(renewCount(), 0);
+  assert.equal(opened.length, 1);
+  assert.match(opened[0], /^wss:\/\/play\.example\/ws\/v1\/realtime\?roomId=room-1&access_token=launch-token$/);
+});
+
+test('reconnect renews first, then opens with the new token', async () => {
+  const { client, opened, renewCount } = fakeRooms('launch-token', 'renewed');
+  await client.connect('room-1');
+  const order = [];
+  await renewThenReconnect({
+    renew: () => { order.push('renew'); return client.renew(); },
+    reopen: () => { order.push('reopen'); return client.connect('room-1'); },
+    onRetry: () => assert.fail('no retry'),
+    onRelaunch: () => assert.fail('no relaunch'),
+  });
+  assert.deepEqual(order, ['renew', 'reopen']);
+  assert.equal(renewCount(), 1);
+  assert.equal(opened.length, 2);
+  assert.match(opened[1], /access_token=fresh-token-1$/);
+  assert.ok(!opened[1].includes('launch-token'), 'stale token never reused');
+});
+
+test("'retry' backs off without reopening the old URL, then renews again", async () => {
+  const { client, opened } = fakeRooms('launch-token', (n) => (n === 1 ? 'retry' : 'renewed'));
+  await client.connect('room-1');
+  let retries = 0;
+  const attempt = () => renewThenReconnect({
+    renew: () => client.renew(),
+    reopen: () => client.connect('room-1'),
+    onRetry: () => { retries++; },
+    onRelaunch: () => assert.fail('no relaunch'),
+  });
+  await attempt();
+  assert.equal(retries, 1);
+  assert.equal(opened.length, 1, 'no socket reopened on retry');
+  await attempt(); // the game's backoff timer fires again
+  assert.equal(opened.length, 2);
+  assert.match(opened[1], /access_token=fresh-token-2$/);
+  // a renewal that throws is treated as transient too
+  await renewThenReconnect({
+    renew: async () => { throw new Error('offline'); },
+    reopen: () => assert.fail('must not reopen'), onRetry: () => { retries++; }, onRelaunch: () => assert.fail('no relaunch'),
+  });
+  assert.equal(retries, 2);
+});
+
+test("'relaunch' stops reconnecting and surfaces the relaunch prompt", async () => {
+  const { client, opened } = fakeRooms('launch-token', 'relaunch');
+  await client.connect('room-1');
+  let prompts = 0;
+  await renewThenReconnect({
+    renew: () => client.renew(),
+    reopen: () => assert.fail('must not reopen'),
+    onRetry: () => assert.fail('must not retry'),
+    onRelaunch: () => { prompts++; },
+  });
+  assert.equal(prompts, 1);
+  assert.equal(opened.length, 1);
+});
+
+test('session-expired prompt strings exist in every shipped locale', async () => {
+  const { SH_STRINGS } = await import('../js/sh-strings.js');
+  for (const loc of ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']) {
+    for (const k of ['expiredTitle', 'expiredBody', 'relaunch', 'notNow']) {
+      assert.ok(SH_STRINGS[loc][k], `${loc}.${k}`);
+    }
+  }
 });

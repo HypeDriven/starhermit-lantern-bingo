@@ -42,7 +42,7 @@ export class AudioEngine {
         const g = this.ctx.createGain();
         g.gain.value = this.muted ? 0 : this.volumes[name];
         g.connect(master);
-        this.buses[name] = g;
+        this.buses[name] = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(g, name) : g);
       }
       this._loadSfxManifest();
     }
@@ -82,7 +82,7 @@ export class AudioEngine {
   _playSample(name) {
     const buf = this._sfxBuffers.get(name);
     if (!buf) return false;
-    const src = this.ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), name) : this.ctx.createBufferSource());
     src.buffer = buf;
     src.connect(this.buses.effects);
     src.start();
@@ -121,7 +121,7 @@ export class AudioEngine {
   _tone(bus, freq, dur, type = 'sine', gain = 0.25, when = 0) {
     if (!this.ensure()) return;
     const t = this.ctx.currentTime + when;
-    const osc = this.ctx.createOscillator();
+    const osc = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), bus) : this.ctx.createOscillator());
     const g = this.ctx.createGain();
     osc.type = type;
     osc.frequency.value = freq;
@@ -176,8 +176,8 @@ export class AudioEngine {
   // Quiet deterministic ambience: slow lantern-hum pad.
   startAmbience() {
     if (!this.ensure() || this._amb) return;
-    const osc = this.ctx.createOscillator();
-    const osc2 = this.ctx.createOscillator();
+    const osc = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), null) : this.ctx.createOscillator());
+    const osc2 = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), null) : this.ctx.createOscillator());
     const g = this.ctx.createGain();
     osc.type = 'sine'; osc.frequency.value = 110;
     osc2.type = 'sine'; osc2.frequency.value = 165;

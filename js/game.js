@@ -656,13 +656,13 @@ class HallRenderer {
       this._buildPost(w, h);
     }
     if (this.composer) {
-      try { this.composer.render(); return; } catch (_) {
+      try { (globalThis.GameOptions ? globalThis.GameOptions.draw(this.composer.renderer, () => this.composer.render()) : this.composer.render()); return; } catch (_) {
         gfxRuntime.postFailed = true;
         this._disposePost();
         refreshGfxPanel();
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(this.renderer, () => this.renderer.render(this.scene, this.camera)) : this.renderer.render(this.scene, this.camera));
   }
 
   resize() {

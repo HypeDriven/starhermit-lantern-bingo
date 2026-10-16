@@ -40,7 +40,7 @@ function fakeWindow(href) {
 // Fake platform: records calls, keeps one cloud-save slot and a settings KV.
 function fakePlatform() {
   const calls = [];
-  let slot = null;
+  let slot = null, etag = null, version = 0;
   const settings = { theme: 'jade' };
   const res = (status, body, bytes) => ({
     ok: status >= 200 && status < 300, status,
@@ -54,8 +54,18 @@ function fakePlatform() {
     const body = init.body ? JSON.parse(init.body) : undefined;
     calls.push({ url, method, body, auth: (init.headers || {}).Authorization || (init.headers || {}).authorization });
     if (url === `/api/v1/users/${USER}/profile`) return res(200, { nickname: 'Lamplighter', username: 'secret_user' });
-    if (url === `/api/v1/me/cloud-saves/${encodeURIComponent('game:' + SLUG)}`) {
-      if (method === 'PUT') { slot = Buffer.from(body.dataBase64, 'base64'); return res(204); }
+    const savePath = `/api/v1/me/cloud-saves/${encodeURIComponent('game:' + SLUG)}`;
+    if (url === savePath + '/info') return res(200, slot ? { exists: true, etag } : { exists: false });
+    if (url === savePath) {
+      // Conditional writes like the platform: a stale If-Match (or If-None-Match: *
+      // on a filled slot) is refused with 412; a success returns the new ETag.
+      if (method === 'PUT') {
+        const h = init.headers || {};
+        if ((h['If-Match'] && h['If-Match'] !== etag) || (h['If-None-Match'] === '*' && slot)) return res(412, { error: 'precondition_failed', etag });
+        slot = Buffer.from(body.dataBase64, 'base64');
+        etag = '"v' + (++version) + '"';
+        return res(200, { etag });
+      }
       return slot ? res(200, null, new Uint8Array(slot)) : res(404);
     }
     if (url === `/api/v1/games/${SLUG}/settings`) {
@@ -160,9 +170,56 @@ test('standalone: no token means no fetch at all, local defaults everywhere', as
 
 test('sign-in is offered on the platform host without a token', () => {
   const fp = fakePlatform();
-  const sh = loadSdk().create({ window: fakeWindow(`https://${SLUG}.starhermit.com/`), fetch: fp.fetch });
+  const sh = loadSdk().create({ window: fakeWindow('https://0b9d6f2e-3c4a-4e5b-9a7c-1d2e3f405162.starhermit.com/'), fetch: fp.fetch });
   const p = createPlatform({ sh, fetch: fp.fetch });
   assert.equal(p.hosted, false);
   assert.equal(p.canSignIn(), true);
   assert.equal(fp.calls.length, 0);
+});
+
+test('save conflict: a stale write is refused, onConflict fires, and a reload + merge saves again', async () => {
+  const { mergeSaves } = await import('../js/save-merge.js');
+  const fp = fakePlatform();
+  const mk = () => {
+    const t = timers();
+    const sh = loadSdk().create({ window: fakeWindow(`https://${SLUG}.starhermit.com/index.html#game_token=${makeJwt()}`), fetch: fp.fetch, setTimeout: t.setTimeout, clearTimeout: t.clearTimeout });
+    return createPlatform({ sh, fetch: fp.fetch, setTimeout: t.setTimeout, clearTimeout: t.clearTimeout });
+  };
+  const a = mk(), b = mk();
+  const base = { version: 1, settings: { theme: 'ember' }, progress: { journeyDone: [], lessonsDone: [], bestScores: {}, dailyHistory: {}, streakDays: [], achievements: {}, gamesPlayed: 0 } };
+  assert.equal(await a.loadCloud(), null);
+  assert.equal(await b.loadCloud(), null);
+  a.pushCloud({ ...base, progress: { ...base.progress, journeyDone: ['journey-01'], gamesPlayed: 3 } });
+  assert.equal(await a.flushCloud(), true);
+  let conflicts = 0;
+  b.onConflict(() => { conflicts++; });
+  const local = { ...base, settings: { theme: 'jade' }, progress: { ...base.progress, lessonsDone: ['learn-mark'], bestScores: { 'journey-01': 900 }, gamesPlayed: 1 } };
+  b.pushCloud(local);
+  assert.equal(await b.flushCloud(), false, 'the stale write is refused');
+  assert.equal(conflicts, 1);
+  const remote = await b.loadCloud();
+  assert.equal(b.cloudReadFailed(), false);
+  const merged = mergeSaves(remote, local, base);
+  assert.deepEqual(merged.progress.journeyDone, ['journey-01']);
+  assert.deepEqual(merged.progress.lessonsDone, ['learn-mark']);
+  assert.equal(merged.progress.gamesPlayed, 3);
+  assert.equal(merged.settings.theme, 'jade', "this device's settings win");
+  b.pushCloud(merged);
+  assert.equal(await b.flushCloud(), true, 'the merged save lands');
+  assert.deepEqual((await a.loadCloud()).progress.lessonsDone, ['learn-mark']);
+});
+
+test('mergeSaves keeps the best of both progress records', async () => {
+  const { mergeSaves } = await import('../js/save-merge.js');
+  const base = { version: 1, settings: {}, progress: { journeyDone: [], lessonsDone: [], bestScores: {}, dailyHistory: {}, streakDays: [], achievements: {}, gamesPlayed: 0 } };
+  const m = mergeSaves(
+    { progress: { bestScores: { a: 10, b: 50 }, dailyHistory: { '2026-10-01': 300 }, achievements: { first_win: '2026-10-01T00:00:00Z' }, streakDays: ['d1'] } },
+    { progress: { bestScores: { a: 40 }, dailyHistory: { '2026-10-01': 100, '2026-10-02': 5 }, achievements: { first_win: '2026-10-05T00:00:00Z', streak_3: '2026-10-06T00:00:00Z' }, streakDays: ['d2'] } },
+    base);
+  assert.deepEqual(m.progress.bestScores, { a: 40, b: 50 });
+  assert.deepEqual(m.progress.dailyHistory, { '2026-10-01': 300, '2026-10-02': 5 });
+  assert.equal(m.progress.achievements.first_win, '2026-10-01T00:00:00Z', 'earliest unlock kept');
+  assert.ok(m.progress.achievements.streak_3);
+  assert.deepEqual(m.progress.streakDays, ['d1', 'd2']);
+  assert.equal(mergeSaves(null, { progress: { gamesPlayed: 2 } }, base).progress.gamesPlayed, 2);
 });

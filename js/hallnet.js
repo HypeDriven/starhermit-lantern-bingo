@@ -112,6 +112,21 @@ export class RoomsClient {
     } catch (_) { /* result posting is best-effort */ }
   }
 
+  // { ok, rooms, terms } — `terms` when the platform wants updated terms
+  // accepted first (403 terms_acceptance_required); ok:false on other failures.
+  async mineStatus() {
+    try {
+      const r = await this.api('/api/v1/realtime/rooms/mine');
+      if (r.status === 403) {
+        const body = await r.json().catch(() => null);
+        return { ok: false, rooms: [], terms: !!(body && body.error === 'terms_acceptance_required') };
+      }
+      if (!r.ok) return { ok: false, rooms: [], terms: false };
+      const j = await r.json().catch(() => null);
+      return { ok: true, rooms: Array.isArray(j) ? j : (j && (j.rooms || j.items)) || [], terms: false };
+    } catch (_) { return { ok: false, rooms: [], terms: false }; }
+  }
+
   async mine() {
     try {
       const r = await this.api('/api/v1/realtime/rooms/mine');
@@ -144,12 +159,14 @@ export class RoomsClient {
 // A refused (expired) token looks like a network drop (close 1006), so every
 // REconnect renews the launch token first and only then reopens, building the
 // URL from the fresh token. 'retry' never reopens the old URL; 'relaunch'
-// stops for good (the SDK has already signed out).
-export async function renewThenReconnect({ renew, reopen, onRetry, onRelaunch }) {
+// stops for good (the SDK has already signed out); 'terms-required' stops too
+// and asks for terms consent on StarHermit (onTerms, else like relaunch).
+export async function renewThenReconnect({ renew, reopen, onRetry, onRelaunch, onTerms }) {
   let outcome;
   try { outcome = await renew(); } catch (_) { outcome = 'retry'; }
   if (outcome === 'renewed') return reopen();
   if (outcome === 'relaunch') return onRelaunch();
+  if (outcome === 'terms-required') return (onTerms || onRelaunch)();
   return onRetry();
 }
 

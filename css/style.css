@@ -379,3 +379,11 @@ body.gfx-detailed.gfx-animated:not(.reduced-motion):not(.high-contrast) .title-h
   box-shadow: 0 6px 20px rgba(0, 0, 0, .45); text-align: center;
 }
 .sh-toast[hidden] { display: none; }
+
+/* Long translations (German) wrap or shrink instead of widening the settings
+   fieldsets past a 390 px screen. */
+.settings-form fieldset { min-width: 0; }
+.settings-form label > span { min-width: 0; overflow-wrap: break-word; hyphens: auto; }
+.settings-form select { min-width: 0; max-width: 60%; text-overflow: ellipsis; }
+.gfx-panel label > span { flex: 1 1 0; }
+.settings-form .gfx-panel select { max-width: 52%; }

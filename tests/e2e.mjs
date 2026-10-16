@@ -24,6 +24,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { launchToken, stubStarHermit } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MIME = {
@@ -127,7 +128,7 @@ async function runPass(browser, tag, viewport, opts = {}) {
     await step('load → title screen', async () => {
       await page.goto(base, { waitUntil: 'load' });
       await page.waitForSelector('#screen-title:not([hidden])', { timeout: 10000 });
-      await page.waitForFunction(() => document.querySelector('#live-status').textContent.includes('title'));
+      await page.waitForFunction(() => document.querySelector('#live-status').dataset.phase === 'title');
       await page.screenshot({ path: SHOT('title', tag) });
     });
 
@@ -215,7 +216,7 @@ async function runPass(browser, tag, viewport, opts = {}) {
       await page.click('#setup-start');
       await page.waitForSelector('#screen-play:not([hidden])');
       await page.waitForFunction(
-        () => document.querySelector('#live-status').textContent.includes('active'),
+        () => document.querySelector('#live-status').dataset.phase === 'active',
         null, { timeout: 12000 });
       const cells = await page.locator('#card-grid .card-cell').count();
       if (cells !== 25) throw new Error(`expected 25 card cells, got ${cells}`);
@@ -240,7 +241,7 @@ async function runPass(browser, tag, viewport, opts = {}) {
       await page.click('[data-nav="play-quick"]');
       await page.click('#setup-start');
       await page.waitForFunction(
-        () => document.querySelector('#live-status').textContent.includes('active'),
+        () => document.querySelector('#live-status').dataset.phase === 'active',
         null, { timeout: 12000 });
       await page.click('#btn-hint');
       const hint = await page.textContent('#hint-text');
@@ -254,7 +255,7 @@ async function runPass(browser, tag, viewport, opts = {}) {
       await page.getByRole('button', { name: 'Resume' }).click();
       await page.waitForFunction(
         () => !document.querySelector('#modal-root').open &&
-          document.querySelector('#live-status').textContent.includes('active'));
+          document.querySelector('#live-status').dataset.phase === 'active');
       await page.click('#btn-pause');
       await page.waitForSelector('#modal-root[open]');
       await page.getByRole('button', { name: 'Leave round' }).click();
@@ -275,6 +276,86 @@ async function runPass(browser, tag, viewport, opts = {}) {
         }
       });
     }
+
+    await step('language: Automatic follows the StarHermit preferred language (fr-CA); Deutsch re-renders and saves ui.language; report a problem', async () => {
+      const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+      await page.goto('about:blank');
+      await page.goto(base + 'index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+      await page.waitForFunction(() => document.documentElement.lang === 'fr-CA', null, { timeout: 10000 });
+      if ((await page.textContent('[data-nav="play-quick"]')) !== 'Jouer') throw new Error('title not in fr-CA');
+      await page.click('[data-nav="settings"]');
+      await page.waitForSelector('#screen-settings:not([hidden])');
+      const choice = page.locator('[data-game-language="choice"]');
+      if ((await choice.count()) !== 1) throw new Error('expected exactly one Language select');
+      await choice.scrollIntoViewIfNeeded();
+      const auto = await choice.locator('option').first().textContent();
+      if (auto !== 'Automatique — Français (Canada)') throw new Error('Automatic label: ' + auto);
+      await page.evaluate(() => { document.querySelector('[data-game-language="choice"]').__kept = true; });
+      await choice.selectOption('de-DE');
+      await page.waitForFunction(() => document.documentElement.lang === 'de-DE');
+      await page.waitForFunction(() => /Im Konto gespeichert/.test(document.querySelector('[data-game-language="status"]').textContent), null, { timeout: 5000 });
+      if (calls.settings['ui.language']?.choice !== 'de-DE') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+      const de = await page.evaluate(() => ({
+        h: document.getElementById('settings-heading').textContent,
+        gfx: document.getElementById('gfx-legend').textContent,
+        theme: document.querySelector('select[name="theme"] option').textContent,
+        done: document.querySelector('#screen-settings [data-nav="title"]').textContent,
+        kept: document.querySelector('[data-game-language="choice"]').__kept === true,
+      }));
+      if (de.h !== 'Einstellungen' || de.gfx !== 'Grafik' || de.theme !== 'Glutenhof' || de.done !== 'Fertig' || !de.kept) throw new Error('settings not re-rendered in place: ' + JSON.stringify(de));
+      await page.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+      await page.fill('[data-game-report="title"]', 'Language test report');
+      await page.click('[data-game-report="send"]');
+      await page.waitForFunction(() => /Danke/.test(document.querySelector('[data-game-report="status"]').textContent), null, { timeout: 5000 });
+      if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+      if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)) throw new Error('German settings overflow horizontally');
+      const fit = await page.evaluate(() => [...document.querySelectorAll('#screen-settings fieldset')].every((f) => f.getBoundingClientRect().right <= innerWidth + 1));
+      if (!fit) throw new Error('a German settings fieldset is cut off');
+      await page.screenshot({ path: SHOT('language-de', tag), fullPage: true });
+      await page.click('#screen-settings [data-nav="title"]');
+      await page.waitForSelector('#screen-title:not([hidden])');
+    });
+
+    await step('language: switching mid-round re-renders the pause dialog, HUD and card and keeps the round', async () => {
+      await page.click('[data-nav="play-quick"]');
+      await page.click('#setup-start');
+      await page.waitForFunction(() => document.querySelector('#live-status').dataset.phase === 'active', null, { timeout: 15000 });
+      const cardBefore = await page.evaluate(() => [...document.querySelectorAll('#card-grid .card-cell')].map((c) => c.textContent).join(','));
+      await page.click('#btn-pause');
+      await page.waitForSelector('#modal-root[open]');
+      await page.getByRole('button', { name: 'Einstellungen', exact: true }).click();
+      await page.waitForSelector('#screen-settings:not([hidden])');
+      const choice = page.locator('[data-game-language="choice"]');
+      await choice.scrollIntoViewIfNeeded();
+      await choice.selectOption('it-IT');
+      await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+      await page.click('#screen-settings [data-nav="title"]');
+      await page.waitForSelector('#modal-root[open]');
+      if ((await page.textContent('#modal-title')) !== 'In pausa') throw new Error('pause dialog not Italian');
+      await page.getByRole('button', { name: 'Riprendi', exact: true }).click();
+      const it = await page.evaluate(() => ({
+        objective: document.getElementById('objective-text').textContent,
+        call: document.querySelector('#btn-call span').textContent,
+        free: document.querySelector('#card-grid .card-cell.free').textContent,
+        cell: document.querySelector('#card-grid .card-cell:not(.free)').getAttribute('aria-label'),
+        card: [...document.querySelectorAll('#card-grid .card-cell')].map((c) => c.textContent).join(','),
+        status: document.getElementById('live-status').textContent,
+      }));
+      if (!/^Obiettivo: /.test(it.objective) || it.call !== 'Estrai' || it.free !== 'LIBERA' || !/^riga 1 colonna 1/.test(it.cell) || !/^Turno in corso/.test(it.status)) {
+        throw new Error('round not re-rendered: ' + JSON.stringify(it));
+      }
+      if (it.card.replace('LIBERA', 'FREE') !== cardBefore.replace('FREI', 'FREE')) throw new Error('the card changed: the round was not kept');
+      await page.screenshot({ path: SHOT('language-it-play', tag) });
+      await page.click('#btn-pause');
+      await page.getByRole('button', { name: 'Abbandona il turno', exact: true }).click();
+      await page.waitForSelector('#screen-title:not([hidden])');
+      await page.click('[data-nav="settings"]');
+      await choice.scrollIntoViewIfNeeded();
+      await choice.selectOption('auto');
+      await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+      await page.click('#screen-settings [data-nav="title"]');
+      await page.unroute(/\/api\/v1\//);
+    });
 
     if (errors.length) {
       throw new Error(`page errors in ${tag} pass:\n` + errors.join('\n'));
@@ -302,7 +383,7 @@ async function runHallPass(browser) {
     await page.click('#screen-settings [data-nav="title"]');
     await page.click('[data-nav="play-quick"]');
     await page.click('#setup-start');
-    await page.waitForFunction(() => document.querySelector('#live-status').textContent.includes('active'), null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('#live-status').dataset.phase === 'active', null, { timeout: 15000 });
     await page.waitForTimeout(2500);
     if (!(await page.locator('#canvas-holder canvas').isVisible())) throw new Error('3D hall not visible on tall desktop');
     await page.screenshot({ path: SHOT('hall-ultra', 'desktop') });

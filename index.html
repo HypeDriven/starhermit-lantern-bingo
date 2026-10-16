@@ -13,6 +13,7 @@
 { "imports": { "three": "./js/three.module.js", "three/addons/": "./js/vendor/three/addons/" } }
 </script>
 <script src="browser-guard.js"></script>
+<script src="sh-language.js"></script>
 <script src="starhermit-sdk.js"></script>
 </head>
 <body>
@@ -22,25 +23,25 @@
     <h1 class="game-title">Lantern Bingo</h1>
     <p id="live-status" class="status-line" role="status" aria-live="polite"></p>
     <p id="live-alert" class="visually-hidden" role="alert" aria-live="assertive"></p>
-    <p id="captions" class="captions" aria-live="polite" aria-label="Audio captions"></p>
+    <p id="captions" class="captions" aria-live="polite" aria-label="Audio captions" data-i18n-aria="Audio captions"></p>
   </header>
 
   <main id="main" role="main">
 
     <!-- Title / home -->
     <section id="screen-title" class="screen" aria-labelledby="title-heading">
-      <h2 id="title-heading" class="visually-hidden">Main menu</h2>
+      <h2 id="title-heading" class="visually-hidden" data-i18n="Main menu">Main menu</h2>
       <div class="title-hero" aria-hidden="true">🏮</div>
-      <nav class="menu-col" aria-label="Main menu">
-        <button type="button" class="menu-btn primary" data-nav="play-quick">Play</button>
-        <button type="button" class="menu-btn" data-nav="journey">Journey</button>
-        <button type="button" class="menu-btn" data-nav="daily">Daily</button>
-        <button type="button" class="menu-btn" data-nav="practice">Practice</button>
-        <button type="button" class="menu-btn" data-nav="challenge">Challenge</button>
-        <button type="button" class="menu-btn" data-nav="learn">Learn</button>
-        <button type="button" class="menu-btn" data-nav="hosted">Hosted Play</button>
-        <button type="button" class="menu-btn" data-nav="settings">Settings</button>
-        <button type="button" class="menu-btn" data-nav="help">Help</button>
+      <nav class="menu-col" aria-label="Main menu" data-i18n-aria="Main menu">
+        <button type="button" class="menu-btn primary" data-nav="play-quick" data-i18n="Play">Play</button>
+        <button type="button" class="menu-btn" data-nav="journey" data-i18n="Journey">Journey</button>
+        <button type="button" class="menu-btn" data-nav="daily" data-i18n="Daily">Daily</button>
+        <button type="button" class="menu-btn" data-nav="practice" data-i18n="Practice">Practice</button>
+        <button type="button" class="menu-btn" data-nav="challenge" data-i18n="Challenge">Challenge</button>
+        <button type="button" class="menu-btn" data-nav="learn" data-i18n="Learn">Learn</button>
+        <button type="button" class="menu-btn" data-nav="hosted" data-i18n="Hosted Play">Hosted Play</button>
+        <button type="button" class="menu-btn" data-nav="settings" data-i18n="Settings">Settings</button>
+        <button type="button" class="menu-btn" data-nav="help" data-i18n="Help">Help</button>
       </nav>
       <p id="title-progress" class="muted"></p>
       <p id="account-line" class="muted" hidden></p>
@@ -52,32 +53,32 @@
 
     <!-- Mode setup -->
     <section id="screen-setup" class="screen" hidden aria-labelledby="setup-heading">
-      <h2 id="setup-heading">Mode Setup</h2>
+      <h2 id="setup-heading" data-i18n="Mode Setup">Mode Setup</h2>
       <div id="setup-details" class="panel"></div>
       <div class="row-actions">
-        <button type="button" class="menu-btn primary" id="setup-start">Start</button>
-        <button type="button" class="menu-btn" data-nav="title">Back</button>
+        <button type="button" class="menu-btn primary" id="setup-start" data-i18n="Start">Start</button>
+        <button type="button" class="menu-btn" data-nav="title" data-i18n="Back">Back</button>
       </div>
     </section>
 
     <!-- Journey stage list -->
     <section id="screen-journey" class="screen" hidden aria-labelledby="journey-heading">
-      <h2 id="journey-heading">Journey</h2>
+      <h2 id="journey-heading" data-i18n="Journey">Journey</h2>
       <ol id="journey-list" class="stage-list"></ol>
-      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title">Back</button></div>
+      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title" data-i18n="Back">Back</button></div>
     </section>
 
     <!-- Learn lesson list -->
     <section id="screen-learn" class="screen" hidden aria-labelledby="learn-heading">
-      <h2 id="learn-heading">Learn</h2>
+      <h2 id="learn-heading" data-i18n="Learn">Learn</h2>
       <ol id="learn-list" class="stage-list"></ol>
-      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title">Back</button></div>
+      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title" data-i18n="Back">Back</button></div>
     </section>
 
     <!-- Play -->
     <section id="screen-play" class="screen play-screen" hidden aria-labelledby="objective-text">
       <div class="play-layout">
-        <aside class="rail rail-left" aria-label="Objective and progress">
+        <aside class="rail rail-left" aria-label="Objective and progress" data-i18n-aria="Objective and progress">
           <h3 id="objective-text">Objective</h3>
           <p id="pattern-desc" class="muted"></p>
           <p id="progress-text"></p>
@@ -90,116 +91,116 @@
             <span id="call-display">—</span>
             <span id="call-timer" class="muted"></span>
           </div>
-          <div id="card-grid" class="card-grid" role="grid" aria-label="Your bingo card"></div>
+          <div id="card-grid" class="card-grid" role="grid" aria-label="Your bingo card" data-i18n-aria="Your bingo card"></div>
           <p id="hint-text" class="hint-text" role="status"></p>
         </div>
 
-        <aside class="rail rail-right" aria-label="Status">
-          <h3>Hall</h3>
+        <aside class="rail rail-right" aria-label="Status" data-i18n-aria="Status">
+          <h3 data-i18n="Hall">Hall</h3>
           <ul id="roster" class="roster"></ul>
         </aside>
       </div>
 
-      <footer id="action-tray" class="action-tray" aria-label="Actions">
-        <button type="button" class="tray-btn" id="btn-call">Call <kbd data-key="call">Space</kbd></button>
-        <button type="button" class="tray-btn primary" id="btn-claim" disabled>Claim <kbd data-key="claim">C</kbd></button>
-        <button type="button" class="tray-btn" id="btn-undo" hidden>Undo <kbd data-key="undo">U</kbd></button>
-        <button type="button" class="tray-btn" id="btn-hint">Hint <kbd data-key="hint">H</kbd></button>
-        <button type="button" class="tray-btn" id="btn-pause">Pause <kbd data-key="pause">P</kbd></button>
+      <footer id="action-tray" class="action-tray" aria-label="Actions" data-i18n-aria="Actions">
+        <button type="button" class="tray-btn" id="btn-call"><span data-i18n="Call">Call</span> <kbd data-key="call">Space</kbd></button>
+        <button type="button" class="tray-btn primary" id="btn-claim" disabled><span data-i18n="Claim">Claim</span> <kbd data-key="claim">C</kbd></button>
+        <button type="button" class="tray-btn" id="btn-undo" hidden><span data-i18n="Undo">Undo</span> <kbd data-key="undo">U</kbd></button>
+        <button type="button" class="tray-btn" id="btn-hint"><span data-i18n="Hint">Hint</span> <kbd data-key="hint">H</kbd></button>
+        <button type="button" class="tray-btn" id="btn-pause"><span data-i18n="Pause">Pause</span> <kbd data-key="pause">P</kbd></button>
       </footer>
     </section>
 
     <!-- Results -->
     <section id="screen-results" class="screen" hidden aria-labelledby="results-heading">
-      <h2 id="results-heading">Results</h2>
+      <h2 id="results-heading" data-i18n="Results">Results</h2>
       <p id="results-lb" class="results-lb" role="status" hidden></p>
       <img id="results-art" class="results-art" src="./assets/results-lantern.webp" alt="" aria-hidden="true" />
       <div id="results-body" class="panel"></div>
       <div class="row-actions">
-        <button type="button" class="menu-btn primary" id="results-retry">Retry</button>
-        <button type="button" class="menu-btn" id="results-replay">Copy Replay</button>
+        <button type="button" class="menu-btn primary" id="results-retry" data-i18n="Retry">Retry</button>
+        <button type="button" class="menu-btn" id="results-replay" data-i18n="Copy Replay">Copy Replay</button>
         <button type="button" class="menu-btn" id="results-next">Continue</button>
       </div>
     </section>
 
     <!-- Settings -->
     <section id="screen-settings" class="screen" hidden aria-labelledby="settings-heading">
-      <h2 id="settings-heading">Settings</h2>
+      <h2 id="settings-heading" data-i18n="Settings">Settings</h2>
       <form id="settings-form" class="panel settings-form">
         <fieldset>
-          <legend>Audio</legend>
-          <label>Music <input type="range" name="vol-music" min="0" max="1" step="0.05" /></label>
-          <label>Effects <input type="range" name="vol-effects" min="0" max="1" step="0.05" /></label>
-          <label>Ambience <input type="range" name="vol-ambience" min="0" max="1" step="0.05" /></label>
-          <label>Voice cues <input type="range" name="vol-voice" min="0" max="1" step="0.05" /></label>
-          <label><input type="checkbox" name="muted" /> Mute all</label>
+          <legend data-i18n="Audio">Audio</legend>
+          <label><span data-i18n="Music">Music</span> <input type="range" name="vol-music" min="0" max="1" step="0.05" /></label>
+          <label><span data-i18n="Effects">Effects</span> <input type="range" name="vol-effects" min="0" max="1" step="0.05" /></label>
+          <label><span data-i18n="Ambience">Ambience</span> <input type="range" name="vol-ambience" min="0" max="1" step="0.05" /></label>
+          <label><span data-i18n="Voice cues">Voice cues</span> <input type="range" name="vol-voice" min="0" max="1" step="0.05" /></label>
+          <label><input type="checkbox" name="muted" /> <span data-i18n="Mute all">Mute all</span></label>
         </fieldset>
         <fieldset>
           <legend id="gfx-legend">Graphics</legend>
           <div id="gfx-panel" class="gfx-panel" data-gfx-panel></div>
-          <label>Theme
+          <label><span data-i18n="Theme">Theme</span>
             <select name="theme">
-              <option value="ember">Ember Court</option>
-              <option value="jade">Jade Garden</option>
-              <option value="river">River Night</option>
-              <option value="plum">Plum Festival</option>
-              <option value="paper">Paper Dawn</option>
+              <option value="ember" data-i18n="Ember Court">Ember Court</option>
+              <option value="jade" data-i18n="Jade Garden">Jade Garden</option>
+              <option value="river" data-i18n="River Night">River Night</option>
+              <option value="plum" data-i18n="Plum Festival">Plum Festival</option>
+              <option value="paper" data-i18n="Paper Dawn">Paper Dawn</option>
             </select>
           </label>
-          <label><input type="checkbox" name="reducedMotion" /> Reduced motion</label>
-          <label><input type="checkbox" name="highContrast" /> High contrast</label>
+          <label><input type="checkbox" name="reducedMotion" /> <span data-i18n="Reduced motion">Reduced motion</span></label>
+          <label><input type="checkbox" name="highContrast" /> <span data-i18n="High contrast">High contrast</span></label>
         </fieldset>
         <fieldset>
-          <legend>Accessibility &amp; Controls</legend>
-          <label><input type="checkbox" name="largeText" /> Larger text</label>
-          <label><input type="checkbox" name="leftHanded" /> Left-handed action tray</label>
-          <label>Call speed
+          <legend data-i18n="Accessibility &amp; Controls">Accessibility &amp; Controls</legend>
+          <label><input type="checkbox" name="largeText" /> <span data-i18n="Larger text">Larger text</span></label>
+          <label><input type="checkbox" name="leftHanded" /> <span data-i18n="Left-handed action tray">Left-handed action tray</span></label>
+          <label><span data-i18n="Call speed">Call speed</span>
             <select name="callSpeed">
-              <option value="3000">Fast (3s)</option>
-              <option value="5000">Normal (5s)</option>
-              <option value="8000">Relaxed (8s)</option>
-              <option value="0">Manual only</option>
+              <option value="3000" data-i18n="Fast (3s)">Fast (3s)</option>
+              <option value="5000" data-i18n="Normal (5s)">Normal (5s)</option>
+              <option value="8000" data-i18n="Relaxed (8s)">Relaxed (8s)</option>
+              <option value="0" data-i18n="Manual only">Manual only</option>
             </select>
           </label>
-          <label><input type="checkbox" name="autoHint" /> Hint markable cells</label>
+          <label><input type="checkbox" name="autoHint" /> <span data-i18n="Hint markable cells">Hint markable cells</span></label>
         </fieldset>
         <div class="row-actions">
-          <button type="button" class="menu-btn" id="settings-reset">Reset progress</button>
-          <button type="button" class="menu-btn primary" data-nav="title">Done</button>
+          <button type="button" class="menu-btn" id="settings-reset" data-i18n="Reset progress">Reset progress</button>
+          <button type="button" class="menu-btn primary" data-nav="title" data-i18n="Done">Done</button>
         </div>
       </form>
     </section>
 
     <!-- Help -->
     <section id="screen-help" class="screen" hidden aria-labelledby="help-heading">
-      <h2 id="help-heading">How to Play</h2>
+      <h2 id="help-heading" data-i18n="How to Play">How to Play</h2>
       <div class="panel help-cards">
         <article class="rule-card">
-          <h3>Mark calls</h3>
-          <p>Numbers are drawn one at a time and shown on the lantern ball. If a called number is on your card, select that cell to mark it (<kbd>Enter</kbd> or tap).</p>
+          <h3 data-i18n="Mark calls">Mark calls</h3>
+          <p data-i18n-html>Numbers are drawn one at a time and shown on the lantern ball. If a called number is on your card, select that cell to mark it (<kbd>Enter</kbd> or tap).</p>
         </article>
         <article class="rule-card">
-          <h3>Complete the pattern</h3>
-          <p>Each round names a target pattern — a line, corners, a frame, or the full card. The objective panel always shows the current target.</p>
+          <h3 data-i18n="Complete the pattern">Complete the pattern</h3>
+          <p data-i18n-html>Each round names a target pattern — a line, corners, a frame, or the full card. The objective panel always shows the current target.</p>
         </article>
         <article class="rule-card">
-          <h3>Claim first</h3>
-          <p>When your marks complete the target pattern, press <strong>Claim</strong> (<kbd>C</kbd>) before the other lanterns do. False claims cost score.</p>
+          <h3 data-i18n="Claim first">Claim first</h3>
+          <p data-i18n-html>When your marks complete the target pattern, press <strong>Claim</strong> (<kbd>C</kbd>) before the other lanterns do. False claims cost score.</p>
         </article>
         <article class="rule-card">
-          <h3>Keyboard</h3>
-          <p><kbd data-key="left">←</kbd><kbd data-key="right">→</kbd><kbd data-key="up">↑</kbd><kbd data-key="down">↓</kbd> move between cells, <kbd data-key="mark">Enter</kbd> marks (<kbd data-key="call">Space</kbd> marks a focused cell, otherwise calls), <kbd data-key="claim">C</kbd> claim, <kbd data-key="undo">U</kbd> undo in Practice, <kbd data-key="hint">H</kbd> hint, <kbd data-key="pause">P</kbd> pause, <kbd data-key="camera">R</kbd> reset camera, <kbd data-key="back">Esc</kbd> back.</p>
+          <h3 data-i18n="Keyboard">Keyboard</h3>
+          <p data-i18n-html><kbd data-key="left">←</kbd><kbd data-key="right">→</kbd><kbd data-key="up">↑</kbd><kbd data-key="down">↓</kbd> move between cells, <kbd data-key="mark">Enter</kbd> marks (<kbd data-key="call">Space</kbd> marks a focused cell, otherwise calls), <kbd data-key="claim">C</kbd> claim, <kbd data-key="undo">U</kbd> undo in Practice, <kbd data-key="hint">H</kbd> hint, <kbd data-key="pause">P</kbd> pause, <kbd data-key="camera">R</kbd> reset camera, <kbd data-key="back">Esc</kbd> back.</p>
         </article>
         <article class="rule-card">
-          <h3>Scoring</h3>
-          <p>Pattern 1000 · each line +50 · each mark +10 · speed bonus under par · invalid action −25. Ties break on completion, fewer invalid actions, then faster claim.</p>
+          <h3 data-i18n="Scoring">Scoring</h3>
+          <p data-i18n-html>Pattern 1000 · each line +50 · each mark +10 · speed bonus under par · invalid action −25. Ties break on completion, fewer invalid actions, then faster claim.</p>
         </article>
         <article class="rule-card">
-          <h3>Fair play</h3>
-          <p>Every round is seeded and replayable. Daily seeds are fixed per UTC day and identical for everyone.</p>
+          <h3 data-i18n="Fair play">Fair play</h3>
+          <p data-i18n-html>Every round is seeded and replayable. Daily seeds are fixed per UTC day and identical for everyone.</p>
         </article>
       </div>
-      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title">Back</button></div>
+      <div class="row-actions"><button type="button" class="menu-btn" data-nav="title" data-i18n="Back">Back</button></div>
     </section>
 
   </main>

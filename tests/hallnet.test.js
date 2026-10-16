@@ -293,10 +293,38 @@ test("'relaunch' stops reconnecting and surfaces the relaunch prompt", async () 
   assert.equal(opened.length, 1);
 });
 
+test("'terms-required' stops reconnecting and asks for terms consent", async () => {
+  const { client, opened } = fakeRooms('launch-token', 'terms-required');
+  await client.connect('room-1');
+  let terms = 0;
+  await renewThenReconnect({
+    renew: () => client.renew(),
+    reopen: () => assert.fail('must not reopen'),
+    onRetry: () => assert.fail('must not retry'),
+    onRelaunch: () => assert.fail('terms is not a plain relaunch'),
+    onTerms: () => { terms++; },
+  });
+  assert.equal(terms, 1);
+  assert.equal(opened.length, 1);
+  // without an onTerms handler it falls back to the relaunch prompt
+  let prompts = 0;
+  await renewThenReconnect({ renew: async () => 'terms-required', reopen: () => assert.fail(), onRetry: () => assert.fail(), onRelaunch: () => { prompts++; } });
+  assert.equal(prompts, 1);
+});
+
+test('mineStatus distinguishes listed rooms, terms consent and failures', async () => {
+  const resp = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+  const mk = (r) => new RoomsClient({ api: async () => r(), loc: { protocol: 'https:', host: 'x' } });
+  assert.deepEqual(await mk(() => resp(200, { rooms: [{ id: 'r1' }] })).mineStatus(), { ok: true, rooms: [{ id: 'r1' }], terms: false });
+  assert.deepEqual(await mk(() => resp(403, { error: 'terms_acceptance_required' })).mineStatus(), { ok: false, rooms: [], terms: true });
+  assert.deepEqual(await mk(() => resp(500, {})).mineStatus(), { ok: false, rooms: [], terms: false });
+  assert.deepEqual(await mk(() => { throw new Error('offline'); }).mineStatus(), { ok: false, rooms: [], terms: false });
+});
+
 test('session-expired prompt strings exist in every shipped locale', async () => {
   const { SH_STRINGS } = await import('../js/sh-strings.js');
   for (const loc of ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']) {
-    for (const k of ['expiredTitle', 'expiredBody', 'relaunch', 'notNow']) {
+    for (const k of ['expiredTitle', 'expiredBody', 'termsTitle', 'termsBody', 'relaunch', 'notNow']) {
       assert.ok(SH_STRINGS[loc][k], `${loc}.${k}`);
     }
   }

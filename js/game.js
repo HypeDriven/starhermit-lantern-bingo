@@ -21,7 +21,13 @@ import {
 } from './gfx.js';
 import { GFX_STRINGS, pickLocale } from './gfx-strings.js';
 import { TitleFx } from './title-fx.js';
+import { mergeSaves } from './save-merge.js';
 import { shStrings } from './sh-strings.js';
+import { T, N, onLanguage, initLanguage, getLang, applyMarkup } from './i18n.js';
+
+// The game language follows Settings › Language (sh-language.js); a change
+// re-renders every screen, the HUD, the open dialog and the hall in place.
+initLanguage();
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -34,7 +40,7 @@ const platform = createPlatform({
   onPageHide: (fn) => window.addEventListener('pagehide', fn),
 });
 platform.onSync(() => refreshAccountLine());
-const shT = shStrings(navigator.languages || [navigator.language]);
+const shT = () => shStrings([getLang()]);
 
 // ---------------------------------------------------------------- persistence
 const SAVE_KEY = 'lantern-bingo-v1';
@@ -114,13 +120,24 @@ const store = {
   },
 };
 
+platform.onConflict(async () => {
+  let remote = null;
+  try { remote = await platform.loadCloud(); } catch (_) { remote = null; }
+  if (platform.cloudReadFailed()) return; // unknown remote: keep local progress, writes stay blocked
+  store.adoptRemote(mergeSaves(remote, store.data, defaultSave()));
+  platform.pushCloud(store.data);
+  refreshTitleProgress();
+  if (app.screen === 'journey') buildJourneyList();
+  if (app.screen === 'learn') buildLearnList();
+});
+
 // ---------------------------------------------------------------- achievements
 const ACHIEVEMENTS = {
-  first_win:     { name: 'First Light',    desc: 'Win your first round.' },
-  line_master:   { name: 'Line Keeper',    desc: 'Complete 50 lines across all rounds.' },
-  streak_3:      { name: 'Steady Flame',   desc: 'Win 3 rounds in a row.' },
-  full_lantern:  { name: 'Full Lantern',   desc: 'Win a Full Lantern (blackout) round.' },
-  long_road:     { name: 'Long Road',      desc: 'Complete every Journey stage.' },
+  first_win:     { name: N('First Light'),    desc: N('Win your first round.') },
+  line_master:   { name: N('Line Keeper'),    desc: N('Complete 50 lines across all rounds.') },
+  streak_3:      { name: N('Steady Flame'),   desc: N('Win 3 rounds in a row.') },
+  full_lantern:  { name: N('Full Lantern'),   desc: N('Win a Full Lantern (blackout) round.') },
+  long_road:     { name: N('Long Road'),      desc: N('Complete every Journey stage.') },
 };
 
 const achievementCtx = { linesTotal: 0, winStreak: 0 };
@@ -133,7 +150,7 @@ function unlock(key) {
 
 // ---------------------------------------------------------------- audio
 const audio = new AudioEngine(20260829);
-audio.onCaption((text) => { $('#captions').textContent = '♪ ' + text; });
+audio.onCaption((text) => { setText($('#captions'), () => '♪ ' + T(text)); });
 
 function applyAudioSettings() {
   const s = store.data.settings;
@@ -296,7 +313,7 @@ class HallRenderer {
     try {
       renderer = new THREE.WebGLRenderer({ antialias: aa, powerPreference: 'default' });
     } catch (e) {
-      if (!this.renderer) this._fail('3D graphics are unavailable in this browser. The card below remains fully playable.');
+      if (!this.renderer) this._fail(N('3D graphics are unavailable in this browser. The card below remains fully playable.'));
       return !!this.renderer;
     }
     if (this.renderer) {
@@ -317,7 +334,7 @@ class HallRenderer {
     renderer.domElement.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       if (this._swapping || renderer !== this.renderer) return;
-      this._fail('Graphics context was lost. Reload the page to restore the 3D hall — your progress is saved.');
+      this._fail(N('Graphics context was lost. Reload the page to restore the 3D hall — your progress is saved.'));
     });
     renderer.domElement.addEventListener('pointerdown', (e) => this._pick(e));
     this.size = [0, 0];
@@ -465,7 +482,7 @@ class HallRenderer {
     if (this.holder.querySelector('.webgl-fail')) return;
     const p = document.createElement('p');
     p.className = 'webgl-fail';
-    p.textContent = msg;
+    setText(p, msg);
     p.style.padding = '1em';
     this.holder.appendChild(p);
   }
@@ -770,13 +787,44 @@ const app = {
   pendingAck: new Set(), // action identifiers prevent double commits
 };
 
+// The visible status line names the phase in words; the raw phase (and the
+// internal reason) stay on data attributes for automation and debugging.
+const PHASE_TEXT = {
+  boot: N('Loading…'), title: N('Main menu'), preparing: N('Preparing the round…'), countdown: N('Get ready…'),
+  active: N('Round active'), paused: N('Paused'), resolving: N('Round over'), results: N('Results'),
+};
 function setPhase(p, reason) {
   app.gamePhase = p;
-  setStatus(`${p}${reason ? ' — ' + reason : ''}`);
+  const el = $('#live-status');
+  el.dataset.phase = p;
+  el.dataset.reason = reason || '';
+  setStatus(PHASE_TEXT[p] || p);
 }
 
-function setStatus(text) { $('#live-status').textContent = text; }
-function announce(text) { $('#live-alert').textContent = ''; requestAnimationFrame(() => { $('#live-alert').textContent = text; }); }
+// Localized text that re-renders on a language change: `setText(el, key, vars)`
+// remembers the English key (or a thunk) on the element.
+const localized = new Set();
+function setText(el, key, vars) {
+  if (!el) return;
+  if (key == null || key === '') { localized.delete(el); el.textContent = ''; return; }
+  el.__i18n = [key, vars];
+  localized.add(el);
+  el.textContent = typeof key === 'function' ? key() : T(key, vars);
+}
+function rerenderText() {
+  for (const el of localized) {
+    if (!el.isConnected) { localized.delete(el); continue; }
+    const [key, vars] = el.__i18n;
+    el.textContent = typeof key === 'function' ? key() : T(key, vars);
+  }
+}
+
+function setStatus(key, vars) { setText($('#live-status'), key, vars); }
+function announce(key, vars) {
+  const text = T(key, vars);
+  $('#live-alert').textContent = '';
+  requestAnimationFrame(() => { $('#live-alert').textContent = text; });
+}
 
 // ---------------------------------------------------------------- screens
 const SCREENS = ['title', 'setup', 'journey', 'learn', 'play', 'results', 'settings', 'help'];
@@ -791,12 +839,24 @@ function showScreen(name) {
 
 // ---------------------------------------------------------------- modal
 let modalLastFocus = null;
-function openModal(title, bodyHTML, actions) {
+let modalBuild = null;
+// `build()` returns { title, body (HTML), actions } in the current language;
+// it runs again when the language changes while the dialog is open.
+function openModal(build) {
   modalLastFocus = document.activeElement;
-  const dlg = $('#modal-root');
-  $('#modal-title').textContent = title;
-  $('#modal-body').innerHTML = bodyHTML;
+  modalBuild = build;
+  renderModal();
+  $('#modal-root').showModal();
+  const first = $('#modal-actions').querySelector('button');
+  if (first) first.focus();
+}
+function renderModal(keepFocus) {
+  if (!modalBuild) return;
+  const { title, body, actions } = modalBuild();
   const act = $('#modal-actions');
+  const focusIdx = keepFocus ? [...act.children].indexOf(document.activeElement) : -1;
+  $('#modal-title').textContent = title;
+  $('#modal-body').innerHTML = body;
   act.innerHTML = '';
   for (const a of actions) {
     const b = document.createElement('button');
@@ -805,9 +865,7 @@ function openModal(title, bodyHTML, actions) {
     b.addEventListener('click', () => { audio.event('ui'); a.onClick(); });
     act.appendChild(b);
   }
-  dlg.showModal();
-  const first = act.querySelector('button');
-  if (first) first.focus();
+  if (focusIdx >= 0 && act.children[focusIdx]) act.children[focusIdx].focus();
 }
 function closeModal() {
   const dlg = $('#modal-root');
@@ -818,14 +876,29 @@ $('#modal-root').addEventListener('cancel', (e) => { e.preventDefault(); if (app
 $('#modal-root').addEventListener('click', (e) => { if (e.target === $('#modal-root') && app.gamePhase === 'paused') resumeGame(); });
 
 // ---------------------------------------------------------------- setup flows
+// Content names stay English data (content.js, rules.js PATTERNS); they translate here.
+const patternName = (id) => T(PATTERNS[id].name);
+const patternDesc = (id) => T(PATTERNS[id].desc);
+const PRACTICE_LABELS = { easy: N('Easy'), normal: N('Normal'), hard: N('Hard') };
+function stageTitle(stage) {
+  if (!stage) return '';
+  if (stage.id && stage.id.startsWith('journey-')) return stage.mastery ? T('Mastery {n}', { n: stage.index }) : T('Stage {n}', { n: stage.index });
+  if (stage.day) {
+    const base = T('Daily Lantern — {date}', { date: stage.day });
+    return stage.todaysBest != null ? base + ' ' + T("(today's best: {score})", { score: stage.todaysBest }) : base;
+  }
+  if (stage.difficulty) return T('Practice ({difficulty})', { difficulty: T(PRACTICE_LABELS[stage.difficulty]) });
+  return T(stage.title || stage.id);
+}
+
 function setupDescriptor(mode, stage) {
   const lines = [];
-  lines.push(`<p><strong>${stage.title || stage.id}</strong></p>`);
-  lines.push(`<p>Pattern: <strong>${PATTERNS[stage.pattern].name}</strong> — ${PATTERNS[stage.pattern].desc}</p>`);
-  lines.push(`<p>Opponents: ${stage.bots} lantern${stage.bots === 1 ? '' : 's'} · Expected duration: ~${stage.expectedMinutes} min</p>`);
-  lines.push(`<p>Par: ${stage.parCalls} calls · Seed: ${stage.seed} · Content v${stage.version || CONTENT_VERSION}</p>`);
-  lines.push(`<p>${stage.ranked ? 'Ranked result.' : 'Unranked practice — undo allowed, no rating effect.'}</p>`);
-  if (stage.constraint) lines.push(`<p>Constraint: ${stage.constraint}</p>`);
+  lines.push(`<p><strong>${stageTitle(stage)}</strong></p>`);
+  lines.push(`<p>${T('Pattern: {name} — {desc}', { name: `<strong>${patternName(stage.pattern)}</strong>`, desc: patternDesc(stage.pattern) })}</p>`);
+  lines.push(`<p>${T(stage.bots === 1 ? 'Opponents: {n} lantern' : 'Opponents: {n} lanterns', { n: stage.bots })} · ${T('Expected duration: ~{n} min', { n: stage.expectedMinutes })}</p>`);
+  lines.push(`<p>${T('Par: {n} calls', { n: stage.parCalls })} · ${T('Seed: {seed}', { seed: stage.seed })} · ${T('Content v{v}', { v: stage.version || CONTENT_VERSION })}</p>`);
+  lines.push(`<p>${stage.ranked ? T('Ranked result.') : T('Unranked practice — undo allowed, no rating effect.')}</p>`);
+  if (stage.constraint) lines.push(`<p>${T('Constraint: {text}', { text: T(stage.constraint) })}</p>`);
   return lines.join('');
 }
 
@@ -851,10 +924,10 @@ function buildJourneyList() {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = `${s.mastery ? '★ ' : ''}${s.title} — ${PATTERNS[s.pattern].name}`;
+    b.textContent = `${s.mastery ? '★ ' : ''}${stageTitle(s)} — ${patternName(s.pattern)}`;
     if (done.has(s.id)) b.classList.add('done');
     if (s.mastery) b.classList.add('mastery');
-    if (i > unlockUpTo) { b.classList.add('locked'); b.disabled = true; b.setAttribute('aria-label', s.title + ' locked'); }
+    if (i > unlockUpTo) { b.classList.add('locked'); b.disabled = true; b.setAttribute('aria-label', T('{stage} locked', { stage: stageTitle(s) })); }
     else b.addEventListener('click', () => { audio.event('ui'); openSetup('journey', s); });
     li.appendChild(b);
     ol.appendChild(li);
@@ -869,7 +942,7 @@ function buildLearnList() {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = l.title + (done.has(l.id) ? ' ✓' : '');
+    b.textContent = T(l.title) + (done.has(l.id) ? ' ✓' : '');
     if (done.has(l.id)) b.classList.add('done');
     b.addEventListener('click', () => { audio.event('ui'); startLesson(l); });
     li.appendChild(b);
@@ -889,7 +962,7 @@ function startRound(mode, stage) {
   app.stage = stage;
   settingsReturnPause = false;
   helpReturnPause = false;
-  setPhase('preparing', stage.title || stage.id);
+  setPhase('preparing', stage.id);
   app.session = new Session({
     seed: stage.seed >>> 0,
     pattern: stage.pattern,
@@ -901,7 +974,7 @@ function startRound(mode, stage) {
   $('#btn-undo').hidden = !(mode === 'practice' || mode === 'learn');
   $('#btn-claim').disabled = true;
   $('#btn-call').disabled = false; // may have been left disabled by a hosted round
-  $('#hint-text').textContent = '';
+  setText($('#hint-text'), '');
   buildCardDom();
   showScreen('play');
   if (!app.renderer) app.renderer = new HallRenderer($('#canvas-holder'));
@@ -914,7 +987,7 @@ function startRound(mode, stage) {
   syncPlayUi();
   countdown(() => {
     setPhase('active');
-    setStatus('Round active — ' + PATTERNS[stage.pattern].name);
+    setStatus(() => T('Round active — {pattern}', { pattern: patternName(stage.pattern) }));
     scheduleNextCall();
   });
 }
@@ -931,13 +1004,13 @@ function countdown(done) {
   el.setAttribute('role', 'timer');
   holder.style.position = 'relative';
   holder.appendChild(el);
-  const seq = ['3', '2', '1', 'Go'];
+  const seq = ['3', '2', '1', N('Go')];
   let i = 0;
   const step = () => {
     if (app.session !== session) { el.remove(); return; }
     if (app.gamePhase === 'paused') { setTimeout(step, 300); return; }
     if (i >= seq.length) { el.remove(); app.countdownSession = null; done(); return; }
-    el.textContent = seq[i];
+    setText(el, seq[i]);
     announce(seq[i]);
     audio.event(i === seq.length - 1 ? 'go' : 'tick');
     i++;
@@ -972,11 +1045,11 @@ function buildCardDom() {
     b.dataset.cell = i;
     b.setAttribute('role', 'gridcell');
     const r = Math.floor(i / GRID), c = i % GRID;
-    b.setAttribute('aria-label', `row ${r + 1} column ${c + 1}`);
-    if (i === CENTER) { b.classList.add('free'); b.textContent = 'FREE'; b.disabled = true; }
+    b.setAttribute('aria-label', T('row {r} column {c}', { r: r + 1, c: c + 1 }));
+    if (i === CENTER) { b.classList.add('free'); setText(b, N('FREE')); b.disabled = true; }
     else {
       b.textContent = String(me.card[i]);
-      b.setAttribute('aria-label', `row ${r + 1} column ${c + 1}, number ${me.card[i]}`);
+      b.setAttribute('aria-label', T('row {r} column {c}, number {n}', { r: r + 1, c: c + 1, n: me.card[i] }));
       b.addEventListener('click', () => markCell(i));
     }
     b.tabIndex = i === app.focusCell ? 0 : -1;
@@ -1013,18 +1086,19 @@ function scheduleNextCall() {
 }
 
 function updateCallTimerLabel(ms) {
-  $('#call-timer').textContent = ms ? `(auto in ${Math.round(ms / 1000)}s)` : '(manual calls)';
+  if (ms) setText($('#call-timer'), N('(auto in {n}s)'), { n: Math.round(ms / 1000) });
+  else setText($('#call-timer'), N('(manual calls)'));
 }
 
 function doCall() {
   if (!app.session || app.session.ended || app.gamePhase !== 'active') return;
   const r = app.session.dispatch({ type: 'call' });
-  if (!r.ok) { setStatus(r.error === 'deck-exhausted' ? 'No numbers left in the deck.' : r.error); return; }
+  if (!r.ok) { setStatus(r.error === 'deck-exhausted' ? N('No numbers left in the deck.') : errorText(r.error)); return; }
   audio.event('call');
   const v = app.session.state.currentCall;
   $('#call-display').textContent = String(v);
   if (app.renderer && app.renderer.ok) app.renderer.showCall(v);
-  announce('Called ' + v);
+  announce('Called {n}', { n: v });
   scheduleBots();
   scheduleNextCall();
   syncPlayUi();
@@ -1041,14 +1115,12 @@ function tryMarkCell(cell) {
   if (!r.ok) {
     audio.event('invalid');
     const me = app.session.state.players[0];
-    const msg = r.error === 'already-marked' ? 'Already marked.'
-      : r.error === 'number-not-called' ? `Number ${me.card[cell]} has not been called yet.`
-      : r.error;
-    $('#hint-text').textContent = msg;
-    announce(msg);
+    const [key, vars] = markError(r.error, me.card[cell]);
+    setText($('#hint-text'), key, vars);
+    announce(key, vars);
   } else {
     audio.event('mark');
-    $('#hint-text').textContent = '';
+    setText($('#hint-text'), '');
   }
   syncPlayUi();
 }
@@ -1058,11 +1130,25 @@ function tryClaim() {
   const r = app.session.dispatch({ type: 'claim', player: 'you' });
   if (!r.ok) {
     audio.event('invalid');
-    const msg = 'Pattern not complete yet — false claim −25.';
-    $('#hint-text').textContent = msg;
+    const msg = N('Pattern not complete yet — false claim −25.');
+    setText($('#hint-text'), msg);
     announce(msg);
   }
   syncPlayUi();
+}
+
+// Rule refusal codes (rules.js / the hall host) → player-facing text.
+const ERROR_TEXT = {
+  'already-marked': N('Already marked.'), 'pattern-incomplete': N('Pattern not complete yet — false claim −25.'),
+  'game-not-active': N('The round is not active.'), 'cell-out-of-bounds': N('That cell is not on the card.'),
+  'spectating': N('Spectating — you will be seated for the next round.'), 'unsupported-command': N('That action is not available here.'),
+  'unknown-player': N('You are not seated in this round.'), 'malformed-command': N('That action is not available here.'),
+  'unknown-command': N('That action is not available here.'), 'deck-exhausted': N('No numbers left in the deck.'),
+};
+function errorText(code) { return ERROR_TEXT[code] || code; }
+function markError(code, number) {
+  if (code === 'number-not-called') return [N('Number {n} has not been called yet.'), { n: number }];
+  return [errorText(code)];
 }
 
 function scheduleBots() {
@@ -1104,7 +1190,7 @@ function onSessionEvent(ev) {
   if (ev.type !== 'applied') return;
   for (const e of ev.events) {
     if (e.type === 'lines' && e.player === 'you') audio.event('line');
-    if (e.type === 'invalid-claim' && e.player !== 'you') setStatus(e.player + ' made a false claim.');
+    if (e.type === 'invalid-claim' && e.player !== 'you') setStatus('{name} made a false claim.', { name: e.player });
     if (e.type === 'win') endRound(e.player);
   }
   if (app.lesson) lessonOnEvent(ev);
@@ -1153,12 +1239,12 @@ function syncPlayUi() {
   const me = mePlayer(state);
   const stage = app.stage;
 
-  $('#objective-text').textContent = 'Target: ' + PATTERNS[state.pattern].name;
-  $('#pattern-desc').textContent = PATTERNS[state.pattern].desc;
+  $('#objective-text').textContent = T('Target: {pattern}', { pattern: patternName(state.pattern) });
+  $('#pattern-desc').textContent = patternDesc(state.pattern);
   const lines = countLines(me.marks);
-  $('#progress-text').textContent = `Calls: ${state.callIndex + 1} · Lines: ${lines} · Marks: ${me.marksMade}`;
+  $('#progress-text').textContent = T('Calls: {calls} · Lines: {lines} · Marks: {marks}', { calls: state.callIndex + 1, lines, marks: me.marksMade });
   const sb = app.session.score(me.id);
-  $('#score-preview').textContent = `Score so far: ${sb.total} (invalid −${sb.invalidPenalty})`;
+  $('#score-preview').textContent = T('Score so far: {total} (invalid −{penalty})', { total: sb.total, penalty: sb.invalidPenalty });
 
   // claim button enabled only when a claim is legal (pattern complete)
   const claimReady = state.phase === 'active' && patternComplete(me.marks, state.pattern);
@@ -1174,8 +1260,9 @@ function syncPlayUi() {
     el.classList.toggle('markable', !marked && markable.has(i) && store.data.settings.autoHint);
     el.setAttribute('aria-pressed', marked ? 'true' : 'false');
     if (i !== CENTER) {
-      const base = `row ${Math.floor(i / GRID) + 1} column ${(i % GRID) + 1}, number ${me.card[i]}`;
-      el.setAttribute('aria-label', base + (marked ? ', marked' : markable.has(i) ? ', callable' : ''));
+      const v = { r: Math.floor(i / GRID) + 1, c: (i % GRID) + 1, n: me.card[i] };
+      el.setAttribute('aria-label', marked ? T('row {r} column {c}, number {n}, marked', v)
+        : markable.has(i) ? T('row {r} column {c}, number {n}, callable', v) : T('row {r} column {c}, number {n}', v));
     }
   });
 
@@ -1186,9 +1273,9 @@ function syncPlayUi() {
   roster.innerHTML = '';
   for (const p of state.players) {
     const li = document.createElement('li');
-    li.textContent = p.id === me.id ? 'You' : hostedName(p.id);
+    li.textContent = p.id === me.id ? T('You') : hostedName(p.id);
     const span = document.createElement('span');
-    span.textContent = `${countLines(p.marks)} lines`;
+    span.textContent = T(countLines(p.marks) === 1 ? N('{n} line') : N('{n} lines'), { n: countLines(p.marks) });
     li.appendChild(span);
     if (state.winner === p.id) li.classList.add('winner');
     roster.appendChild(li);
@@ -1202,12 +1289,12 @@ function pauseGame(reason) {
   if (app.gamePhase !== 'active' && app.gamePhase !== 'countdown') return;
   clearTimeout(app.callTimer);
   setPhase('paused', reason || 'paused');
-  openModal('Paused', '<p>Take your time. The hall waits.</p>', [
-    { label: 'Resume', primary: true, onClick: resumeGame },
-    { label: 'Settings', onClick: () => { closeModal(); openSettings(true); } },
-    { label: 'Help', onClick: () => { helpReturnPause = true; closeModal(); showScreen('help'); } },
-    { label: 'Leave round', onClick: () => { closeModal(); abandonRound(); } },
-  ]);
+  openModal(() => ({ title: T('Paused'), body: `<p>${T('Take your time. The hall waits.')}</p>`, actions: [
+    { label: T('Resume'), primary: true, onClick: resumeGame },
+    { label: T('Settings'), onClick: () => { closeModal(); openSettings(true); } },
+    { label: T('Help'), onClick: () => { helpReturnPause = true; closeModal(); showScreen('help'); } },
+    { label: T('Leave round'), onClick: () => { closeModal(); abandonRound(); } },
+  ] }));
 }
 
 function resumeGame() {
@@ -1238,40 +1325,58 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---------------------------------------------------------------- results
-function showResults(winnerId, unlocked) {
-  setPhase('results');
-  $('#results-retry').hidden = false;
-  $('#results-replay').hidden = false;
+// Results re-render in place on a language change (renderResults keeps its inputs).
+let resultsView = null;
+function reasonText(reason) {
+  if (!reason) return '—';
+  if (reason === 'pattern-claimed') return T('pattern claimed');
+  if (reason.startsWith('forfeit:')) return T('{name} forfeited', { name: hostedName(reason.slice(8)) });
+  return reason;
+}
+function renderResults() {
+  if (!resultsView) return;
+  if (resultsView.hosted) { renderHostedResults(resultsView.winner); return; }
+  const { unlocked } = resultsView;
   const state = app.session.state;
   const sb = app.session.score('you');
   const won = state.winner === 'you';
   const rows = [
-    ['Pattern bonus', sb.patternBase],
-    [`Line bonus (${sb.lines} lines)`, sb.lineBonus],
-    [`Marks (${state.players[0].marksMade})`, sb.marksScore],
-    [`Speed bonus (par ${state.parCalls}, used ${sb.callsUsed})`, sb.speedBonus],
-    ['Invalid actions', -sb.invalidPenalty],
+    [T('Pattern bonus'), sb.patternBase],
+    [T('Line bonus ({n} lines)', { n: sb.lines }), sb.lineBonus],
+    [T('Marks ({n})', { n: state.players[0].marksMade }), sb.marksScore],
+    [T('Speed bonus (par {par}, used {used})', { par: state.parCalls, used: sb.callsUsed }), sb.speedBonus],
+    [T('Invalid actions'), -sb.invalidPenalty],
   ];
   const ranking = app.session.ranking();
   const table = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v >= 0 ? '+' : ''}${v}</td></tr>`).join('');
   const rankList = ranking.map((id, i) => {
     const s = app.session.score(id);
-    return `<tr><td>${i + 1}. ${id === 'you' ? 'You' : id}</td><td>${s.total}</td></tr>`;
+    return `<tr><td>${i + 1}. ${id === 'you' ? T('You') : id}</td><td>${s.total}</td></tr>`;
   }).join('');
   $('#results-body').innerHTML = `
-    <h3>${won ? '🏮 Bingo! You lit the hall.' : state.winner ? state.winner + ' claimed first.' : 'Round ended.'}</h3>
-    <p class="muted">Reason: ${state.terminalReason} · Seed ${state.seed} · Hash ${hashState(state)}</p>
-    <table class="score-table">${table}<tr class="total"><td>Total</td><td>${sb.total}</td></tr></table>
-    <h4>Ranking</h4>
+    <h3>${won ? T('🏮 Bingo! You lit the hall.') : state.winner ? T('{name} claimed first.', { name: state.winner }) : T('Round ended.')}</h3>
+    <p class="muted">${T('Reason: {reason}', { reason: reasonText(state.terminalReason) })} · ${T('Seed {seed}', { seed: state.seed })} · Hash ${hashState(state)}</p>
+    <table class="score-table">${table}<tr class="total"><td>${T('Total')}</td><td>${sb.total}</td></tr></table>
+    <h4>${T('Ranking')}</h4>
     <table class="score-table">${rankList}</table>
-    ${unlocked.length ? `<h4>Achievements unlocked</h4><ul class="achievements">${unlocked.map(a => `<li>🏅 ${a.name}</li>`).join('')}</ul>` : ''}
-    <h4>Next</h4>
-    <p class="muted">${nextRecommendation()}</p>`;
-  $('#results-next').textContent = app.mode === 'journey' && won ? 'Next stage' : 'Continue';
+    ${unlocked.length ? `<h4>${T('Achievements unlocked')}</h4><ul class="achievements">${unlocked.map(a => `<li>🏅 ${T(a.name)}</li>`).join('')}</ul>` : ''}
+    <h4>${T('Next')}</h4>
+    <p class="muted">${T(nextRecommendation())}</p>`;
+  $('#results-next').textContent = app.mode === 'journey' && won ? T('Next stage') : T('Continue');
+}
+
+function showResults(winnerId, unlocked) {
+  setPhase('results');
+  $('#results-retry').hidden = false;
+  $('#results-replay').hidden = false;
+  const won = app.session.state.winner === 'you';
+  resultsView = { unlocked, recommendation: nextRecommendation() };
+  renderResults();
   if (unlocked.length) setTimeout(() => audio.event('achievement'), 450);
   showScreen('results');
-  announce(won ? 'You won the round' : 'Round over');
-  postToLeaderboard(app.mode === 'learn' ? null : Math.max(0, sb.total));
+  announce(won ? N('You won the round') : N('Round over'));
+  void winnerId;
+  postToLeaderboard(app.mode === 'learn' ? null : Math.max(0, app.session.score('you').total));
 }
 
 // Signed in only: post a finished solo round (every mode but Learn) to the
@@ -1280,21 +1385,21 @@ function postToLeaderboard(total) {
   const line = $('#results-lb');
   if (total == null || !platform.hosted) { line.hidden = true; return; }
   line.hidden = false;
-  line.textContent = shT.lbPosting;
+  setText(line, () => shT().lbPosting);
   const session = app.session;
   platform.submitScore(total).then((r) => {
     if (app.session !== session) return;
-    line.textContent = !r.posted ? shT.lbNotPosted
-      : r.rank ? shT.lbRank.replace('{rank}', r.rank) : shT.lbPosted;
+    setText(line, () => (!r.posted ? shT().lbNotPosted
+      : r.rank ? shT().lbRank.replace('{rank}', r.rank) : shT().lbPosted));
   });
 }
 
 function nextRecommendation() {
   const prog = store.data.progress;
-  if (app.mode === 'learn') return 'Journey stage 1 puts your new skill to the test.';
-  if (app.mode === 'journey' && prog.journeyDone.length < JOURNEY_STAGES.length) return 'Continue the Journey — the next stage is unlocked.';
-  if (!prog.dailyHistory[new Date().toISOString().slice(0, 10)]) return 'Try today\'s Daily Lantern — one shared seed for everyone.';
-  return 'Practice a harder pattern, or take on a Challenge.';
+  if (app.mode === 'learn') return N('Journey stage 1 puts your new skill to the test.');
+  if (app.mode === 'journey' && prog.journeyDone.length < JOURNEY_STAGES.length) return N('Continue the Journey — the next stage is unlocked.');
+  if (!prog.dailyHistory[new Date().toISOString().slice(0, 10)]) return N("Try today's Daily Lantern — one shared seed for everyone.");
+  return N('Practice a harder pattern, or take on a Challenge.');
 }
 
 $('#results-retry').addEventListener('click', () => { audio.event('ui'); startRound(app.mode, app.stage); });
@@ -1312,10 +1417,10 @@ $('#results-next').addEventListener('click', () => {
 $('#results-replay').addEventListener('click', () => {
   audio.event('ui');
   const replay = JSON.stringify(app.session.exportReplay(), null, 2);
-  const done = () => setStatus('Replay copied to clipboard.');
+  const done = () => setStatus(N('Replay copied to clipboard.'));
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(replay).then(done, () => prompt('Copy replay:', replay));
-  } else prompt('Copy replay:', replay);
+    navigator.clipboard.writeText(replay).then(done, () => prompt(T('Copy replay:'), replay));
+  } else prompt(T('Copy replay:'), replay);
 });
 
 // ---------------------------------------------------------------- learn mode
@@ -1335,9 +1440,9 @@ function lessonPrompt() {
   if (!l) return;
   const step = l.def.steps[l.step];
   if (!step) return;
-  $('#hint-text').textContent = step.text;
+  setText($('#hint-text'), step.text);
   announce(step.text);
-  setStatus(`Lesson ${l.step + 1}/${l.def.steps.length}: ${l.def.title}`);
+  setStatus(() => T('Lesson {step}/{count}: {title}', { step: l.step + 1, count: l.def.steps.length, title: T(l.def.title) }));
 }
 
 function lessonOnEvent(ev) {
@@ -1356,8 +1461,8 @@ function lessonOnEvent(ev) {
       const prog = store.data.progress;
       if (!prog.lessonsDone.includes(l.def.id)) { prog.lessonsDone.push(l.def.id); store.save(); }
       if (!app.session.ended) {
-        setStatus('Lesson complete! Finish the round or leave when ready.');
-        announce('Lesson complete');
+        setStatus(N('Lesson complete! Finish the round or leave when ready.'));
+        announce(N('Lesson complete'));
       }
       app.lesson = null;
     } else lessonPrompt();
@@ -1397,13 +1502,13 @@ function startHosted(reconnect) {
 }
 
 function hostedFail() {
-  setStatus('Hosted play is unavailable right now. Try Practice instead.');
-  announce('Hosted play unavailable');
+  setStatus(N('Hosted play is unavailable right now. Try Practice instead.'));
+  announce(N('Hosted play unavailable'));
 }
 
 // -------- hosted via StarHermit realtime rooms (token present)
 async function startHostedRooms(reconnect) {
-  setStatus(reconnect ? 'Reconnecting to hall…' : 'Finding a hall…');
+  setStatus(reconnect ? N('Reconnecting to hall…') : N('Finding a hall…'));
   try {
     if (!platform.nickname) await platform.loadProfile();
     if (!roomsClient) {
@@ -1414,8 +1519,16 @@ async function startHostedRooms(reconnect) {
     }
     let room = null, created = false;
     if (reconnect) {
-      const mine = await roomsClient.mine();
-      room = mine.find(r => roomsClient.roomId(r)) || null;
+      // Reconnect goes back to the same hall only; if the platform no longer
+      // lists it (closed, finished or gone) the loop ends with a notice, and
+      // pending terms consent is handled like a lost session.
+      const prevRoom = app.hosted && app.hosted.roomId;
+      const mine = await roomsClient.mineStatus();
+      if (mine.terms) { showTermsRequired(); return; }
+      if (mine.ok) {
+        room = mine.rooms.find(r => roomsClient.roomId(r) && (!prevRoom || roomsClient.roomId(r) === prevRoom)) || null;
+        if (!room && prevRoom) { hallUnavailable(); return; }
+      }
     }
     if (!room) ({ room, created } = await roomsClient.quickJoinOrCreate(platform.slug));
     const roomId = roomsClient.roomId(room);
@@ -1450,8 +1563,31 @@ function scheduleHallReconnect(attempt) {
         else hostedFail();
       },
       onRelaunch: showSessionExpired,
+      onTerms: showTermsRequired,
     });
   }, HALL_RECONNECT_MS);
+}
+
+// The hall the player was in is gone (closed, finished or no longer listed):
+// end the reconnect loop and say so instead of retrying forever.
+function hallUnavailable() {
+  if (app.mode === 'hosted') abandonRound();
+  setStatus(N('This hall is no longer available — start a new hosted game from the title.'));
+  announce(N('This hall is no longer available — start a new hosted game from the title.'));
+  toast(T('This hall is no longer available — start a new hosted game from the title.'));
+}
+
+// StarHermit needs the player to accept updated terms before renewing: same as a
+// lost session — leave the hall and offer the way back to StarHermit.
+function showTermsRequired() {
+  if (app.mode === 'hosted') abandonRound();
+  clearTimeout(toastTimer);
+  $('#sh-toast').hidden = true;
+  setStatus(() => shT().termsTitle);
+  openModal(() => ({ title: shT().termsTitle, body: `<p>${shT().termsBody}</p>`, actions: [
+    { label: shT().relaunch, primary: true, onClick: () => { platform.relaunch(); } },
+    { label: shT().notNow, onClick: closeModal },
+  ] }));
 }
 
 // The launch token can no longer be renewed: leave the hall and offer the
@@ -1460,11 +1596,11 @@ function showSessionExpired() {
   if (app.mode === 'hosted') abandonRound();
   clearTimeout(toastTimer);
   $('#sh-toast').hidden = true; // the dialog replaces the generic signed-out toast
-  setStatus(shT.expiredTitle);
-  openModal(shT.expiredTitle, `<p>${shT.expiredBody}</p>`, [
-    { label: shT.relaunch, primary: true, onClick: () => { platform.relaunch(); } },
-    { label: shT.notNow, onClick: closeModal },
-  ]);
+  setStatus(() => shT().expiredTitle);
+  openModal(() => ({ title: shT().expiredTitle, body: `<p>${shT().expiredBody}</p>`, actions: [
+    { label: shT().relaunch, primary: true, onClick: () => { platform.relaunch(); } },
+    { label: shT().notNow, onClick: closeModal },
+  ] }));
 }
 
 function handleHallRoster(socket, list, selfId) {
@@ -1476,11 +1612,11 @@ function handleHallRoster(socket, list, selfId) {
       if (pid !== selfId && !ids.has(pid)) hallHost.markAbsent(pid);
     }
     if (socket.hostId && socket.hostId !== selfId) {
-      setStatus('The hall moved to a new host — returning to the title.');
+      setStatus(N('The hall moved to a new host — returning to the title.'));
       abandonRound();
     }
   } else if (socket.hostId && socket.hostId === selfId) {
-    setStatus('The hall host left — returning to the title.');
+    setStatus(N('The hall host left — returning to the title.'));
     abandonRound();
   }
 }
@@ -1517,7 +1653,7 @@ function hostHallRoundStart() {
   $('#btn-call').disabled = true; // the host is the caller, on a fixed 4 s cadence
   $('#btn-claim').disabled = true;
   $('#call-display').textContent = '—';
-  $('#hint-text').textContent = '';
+  setText($('#hint-text'), '');
   buildCardDom();
   showScreen('play');
   if (!app.renderer) app.renderer = new HallRenderer($('#canvas-holder'));
@@ -1528,6 +1664,7 @@ function hostHallRoundStart() {
     app.renderer.showCall(0);
   }
   setPhase('active', 'hosted hall — you are the caller');
+  setStatus(N('Hosted hall — you are the caller.'));
   syncPlayUi();
 }
 
@@ -1538,10 +1675,10 @@ function hostHallEvent(events) {
       const v = hallHost.session.state.currentCall;
       $('#call-display').textContent = String(v);
       if (app.renderer && app.renderer.ok) app.renderer.showCall(v);
-      announce('Called ' + v);
+      announce('Called {n}', { n: v });
     }
     if (e.type === 'lines' && e.player === 'you') audio.event('line');
-    if (e.type === 'invalid-claim' && e.player !== 'you') setStatus(hostedName(e.player) + ' made a false claim.');
+    if (e.type === 'invalid-claim' && e.player !== 'you') setStatus(() => T('{name} made a false claim.', { name: hostedName(e.player) }));
   }
   syncPlayUi();
 }
@@ -1565,7 +1702,7 @@ function enterHallAsGuest(socket, roomId, selfId, reconnect) {
   socket.onclose = () => {
     if (app.mode !== 'hosted') return;
     if (app.gamePhase === 'active' && !reconnect) {
-      setStatus('Disconnected from hall. Reconnecting…');
+      setStatus(N('Disconnected from hall. Reconnecting…'));
       scheduleHallReconnect(1);
     } else {
       hostedFail();
@@ -1599,13 +1736,13 @@ function handleGuestHallMessage(msg, socket, roomId, selfId) {
     $('#btn-undo').hidden = true;
     $('#btn-call').disabled = true; // host is the caller
     $('#btn-claim').disabled = true;
-    $('#hint-text').textContent = '';
+    setText($('#hint-text'), '');
     buildCardDom();
     showScreen('play');
     if (!app.renderer) app.renderer = new HallRenderer($('#canvas-holder'));
     if (app.renderer.ok) { app.renderer.onCellPick = (cell) => hostedMark(cell); app.renderer.resize(); }
     setPhase('active', 'hosted round');
-    if (app.hosted.spectator) setStatus('Spectating this round — you will be seated for the next one.');
+    if (app.hosted.spectator) setStatus(N('Spectating this round — you will be seated for the next one.'));
     syncPlayUi();
     const last = app.session.state.currentCall;
     if (last) { $('#call-display').textContent = String(last); if (app.renderer.ok) app.renderer.showCall(last); }
@@ -1618,7 +1755,7 @@ function handleGuestHallMessage(msg, socket, roomId, selfId) {
       audio.event('call');
       $('#call-display').textContent = String(app.session.state.currentCall);
       if (app.renderer.ok) app.renderer.showCall(app.session.state.currentCall);
-      announce('Called ' + app.session.state.currentCall);
+      announce('Called {n}', { n: app.session.state.currentCall });
     }
     if (app.session.state.ended) {
       const winner = app.session.state.winner;
@@ -1631,14 +1768,14 @@ function handleGuestHallMessage(msg, socket, roomId, selfId) {
     syncPlayUi();
   } else if (msg.type === 'rejected') {
     if (msg.to && msg.to !== selfId) return;
-    announce('Rejected: ' + msg.reason);
-    $('#hint-text').textContent = msg.reason;
+    announce(...markError(msg.reason, ''));
+    setText($('#hint-text'), ...markError(msg.reason, ''));
     audio.event('invalid');
   }
 }
 
 function startHostedLegacy(reconnect) {
-  setStatus(reconnect ? 'Reconnecting to hall…' : 'Connecting to hall…');
+  setStatus(reconnect ? N('Reconnecting to hall…') : N('Connecting to hall…'));
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   let ws;
   try { ws = new WebSocket(proto + '//' + location.host + '/ws'); }
@@ -1653,7 +1790,7 @@ function startHostedLegacy(reconnect) {
   ws.onerror = hostedFail;
   ws.onclose = () => {
     if (app.mode === 'hosted' && app.gamePhase === 'active' && !reconnect) {
-      setStatus('Disconnected from hall. Reconnecting…');
+      setStatus(N('Disconnected from hall. Reconnecting…'));
       setTimeout(() => {
         if (app.mode === 'hosted' && app.gamePhase === 'active') startHosted(true);
       }, 1500);
@@ -1677,8 +1814,9 @@ function startHostedLegacy(reconnect) {
       if (!app.renderer) app.renderer = new HallRenderer($('#canvas-holder'));
       if (app.renderer.ok) { app.renderer.onCellPick = (cell) => hostedMark(cell); app.renderer.resize(); }
       setPhase('active', 'hosted round');
-      if (msg.spectator) setStatus('Spectating this round — you will be seated for the next one.');
-      if (msg.whileAway) setStatus(msg.whileAway);
+      if (msg.spectator) setStatus(N('Spectating this round — you will be seated for the next one.'));
+      // The local dev hall sends this line in English; show the count in the game language.
+      if (msg.whileAway && app.session) setStatus('While you were away: {n} numbers were called.', { n: app.session.state.callIndex + 1 });
       syncPlayUi();
       const last = app.session.state.currentCall;
       if (last) { $('#call-display').textContent = String(last); if (app.renderer.ok) app.renderer.showCall(last); }
@@ -1689,7 +1827,7 @@ function startHostedLegacy(reconnect) {
         audio.event('call');
         $('#call-display').textContent = String(app.session.state.currentCall);
         if (app.renderer.ok) app.renderer.showCall(app.session.state.currentCall);
-        announce('Called ' + app.session.state.currentCall);
+        announce('Called {n}', { n: app.session.state.currentCall });
       }
       if (app.session.state.ended) {
         const winner = app.session.state.winner;
@@ -1701,15 +1839,15 @@ function startHostedLegacy(reconnect) {
       }
       syncPlayUi();
     } else if (msg.type === 'rejected') {
-      announce('Rejected: ' + msg.reason);
-      $('#hint-text').textContent = msg.reason;
+      announce(...markError(msg.reason, ''));
+      setText($('#hint-text'), ...markError(msg.reason, ''));
       audio.event('invalid');
     }
   };
   function hostedFail() {
     clearTimeout(timeout);
-    setStatus('Hosted play is unavailable (no hall server). Try Practice instead.');
-    announce('Hosted play unavailable');
+    setStatus(N('Hosted play is unavailable (no hall server). Try Practice instead.'));
+    announce(N('Hosted play unavailable'));
   }
 }
 
@@ -1739,8 +1877,8 @@ function hostedSend(cmd) {
     const r = hallHost.dispatch({ ...cmd, player: 'you' });
     if (!r.ok) {
       audio.event('invalid');
-      const msg = 'Pattern not complete yet — false claim −25.';
-      $('#hint-text').textContent = msg;
+      const msg = N('Pattern not complete yet — false claim −25.');
+      setText($('#hint-text'), msg);
       announce(msg);
     }
     syncPlayUi();
@@ -1764,21 +1902,19 @@ function hostedMark(cell) {
     if (!r.ok) {
       audio.event('invalid');
       const me = app.session.state.players[0];
-      const msg = r.error === 'already-marked' ? 'Already marked.'
-        : r.error === 'number-not-called' ? `Number ${me.card[cell]} has not been called yet.`
-        : r.error;
-      $('#hint-text').textContent = msg;
-      announce(msg);
+      const [key, vars] = markError(r.error, me.card[cell]);
+      setText($('#hint-text'), key, vars);
+      announce(key, vars);
     } else {
       audio.event('mark');
-      $('#hint-text').textContent = '';
+      setText($('#hint-text'), '');
     }
     syncPlayUi();
     return;
   }
   if (app.hosted.spectator) {
-    const msg = 'Spectating — you will be seated for the next round.';
-    $('#hint-text').textContent = msg;
+    const msg = N('Spectating — you will be seated for the next round.');
+    setText($('#hint-text'), msg);
     announce(msg);
     return;
   }
@@ -1786,37 +1922,44 @@ function hostedMark(cell) {
   hostedSend({ type: 'mark', cell });
 }
 
-function showHostedResults(winner) {
-  setPhase('results');
+function renderHostedResults(winner) {
   const state = app.session.state;
   const myId = meId() || state.players[0].id;
   const sb = hostedScore(state, myId);
   const won = state.winner === myId;
-  audio.event(won ? 'win' : 'lose');
   const ranking = hostedRanking(state);
+  $('#results-next').textContent = T('Continue');
+  $('#results-body').innerHTML = `
+    <h3>${won ? T('🏮 Bingo! You lit the hall.') : winner ? T('{name} claimed first.', { name: hostedName(winner) }) : T('Round ended.')}</h3>
+    <p class="muted">${T('Authoritative result from the hall host')} · ${T('Reason: {reason}', { reason: reasonText(state.terminalReason) })}</p>
+    <table class="score-table">
+      <tr><td>${T('Pattern bonus')}</td><td>+${sb.patternBase}</td></tr>
+      <tr><td>${T('Line bonus')}</td><td>+${sb.lineBonus}</td></tr>
+      <tr><td>${T('Marks')}</td><td>+${sb.marksScore}</td></tr>
+      <tr><td>${T('Invalid actions')}</td><td>−${sb.invalidPenalty}</td></tr>
+      <tr class="total"><td>${T('Total')}</td><td>${sb.total}</td></tr>
+    </table>
+    <h4>${T('Ranking')}</h4>
+    <table class="score-table">${ranking.map((id, i) => `<tr><td>${i + 1}. ${id === myId ? T('You') : hostedName(id)}</td><td>${hostedScore(state, id).total}</td></tr>`).join('')}</table>`;
+}
+
+function showHostedResults(winner) {
+  setPhase('results');
+  const state = app.session.state;
+  const myId = meId() || state.players[0].id;
+  audio.event(state.winner === myId ? 'win' : 'lose');
   // Retry would start a broken local round in hosted mode; replay envelopes
   // are server-owned. Both are hidden for hosted results.
   $('#results-retry').hidden = true;
   $('#results-replay').hidden = true;
-  $('#results-next').textContent = 'Continue';
   $('#results-lb').hidden = true;
-  $('#results-body').innerHTML = `
-    <h3>${won ? '🏮 Bingo! You lit the hall.' : winner ? hostedName(winner) + ' claimed first.' : 'Round ended.'}</h3>
-    <p class="muted">Authoritative result from the hall host · Reason: ${state.terminalReason}</p>
-    <table class="score-table">
-      <tr><td>Pattern bonus</td><td>+${sb.patternBase}</td></tr>
-      <tr><td>Line bonus</td><td>+${sb.lineBonus}</td></tr>
-      <tr><td>Marks</td><td>+${sb.marksScore}</td></tr>
-      <tr><td>Invalid actions</td><td>−${sb.invalidPenalty}</td></tr>
-      <tr class="total"><td>Total</td><td>${sb.total}</td></tr>
-    </table>
-    <h4>Ranking</h4>
-    <table class="score-table">${ranking.map((id, i) => `<tr><td>${i + 1}. ${id === myId ? 'You' : hostedName(id)}</td><td>${hostedScore(state, id).total}</td></tr>`).join('')}</table>`;
+  resultsView = { hosted: true, winner };
+  renderHostedResults(winner);
   showScreen('results');
 }
 
 // ---------------------------------------------------------------- graphics settings
-const gfxT = GFX_STRINGS[pickLocale(navigator.languages || [navigator.language])];
+let gfxT = GFX_STRINGS[pickLocale([getLang()])];
 const titleFx = new TitleFx($('#screen-title'), () => app.screen === 'title' && !document.hidden);
 titleFx.onFrame = (dt) => {
   if (!gfxFrame(dt)) return;
@@ -1850,8 +1993,13 @@ function gfxOption(value, label) {
   return o;
 }
 
+// The Graphics controls live in an inner box (#gfx-controls) so a rebuild on a
+// language change never removes the shared frame-rate / Language / Sound /
+// Report sections that game-options.js appends to #gfx-panel after it.
 function buildGfxPanel() {
-  const panel = $('#gfx-panel');
+  const outer = $('#gfx-panel');
+  let panel = $('#gfx-controls');
+  if (!panel) { panel = document.createElement('div'); panel.id = 'gfx-controls'; panel.className = 'gfx-controls'; outer.prepend(panel); }
   $('#gfx-legend').textContent = gfxT.graphics;
   panel.textContent = '';
   const row = (labelText, control, extra) => {
@@ -1907,8 +2055,11 @@ function buildGfxPanel() {
   note.textContent = gfxT.postUnavailable;
   panel.append(sum, note);
 
-  panel.addEventListener('input', onGfxInput);
-  panel.addEventListener('change', onGfxInput);
+  if (!panel.dataset.bound) {
+    panel.dataset.bound = '1';
+    panel.addEventListener('input', onGfxInput);
+    panel.addEventListener('change', onGfxInput);
+  }
 }
 
 function onGfxInput(e) {
@@ -1936,7 +2087,7 @@ function onGfxInput(e) {
 
 /** Sync the Graphics controls and summary with the current settings. */
 function refreshGfxPanel() {
-  const panel = $('#gfx-panel');
+  const panel = $('#gfx-controls');
   if (!panel || !panel.firstChild) return;
   const saved = gfxSaved();
   const g = currentGfx();
@@ -2021,14 +2172,14 @@ function applyAccessibility() {
 }
 
 $('#settings-reset').addEventListener('click', () => {
-  openModal('Reset progress', '<p>This clears journey progress, best scores, and achievements on this device. Settings are kept. Continue?</p>', [
-    { label: 'Cancel', primary: true, onClick: () => { closeModal(); openSettings(settingsReturnPause); } },
-    { label: 'Reset', onClick: () => {
+  openModal(() => ({ title: T('Reset progress'), body: `<p>${T('This clears journey progress, best scores, and achievements on this device. Settings are kept. Continue?')}</p>`, actions: [
+    { label: T('Cancel'), primary: true, onClick: () => { closeModal(); openSettings(settingsReturnPause); } },
+    { label: T('Reset'), onClick: () => {
       store.data.progress = defaultSave().progress;
       store.save(); closeModal(); openSettings(settingsReturnPause);
-      setStatus('Progress reset.');
+      setStatus(N('Progress reset.'));
     } },
-  ]);
+  ] }));
 });
 
 // Settings "Done" navigates back to pause if we came from there. Must swallow
@@ -2091,7 +2242,7 @@ function practiceStage(difficulty) {
     hard:   { pattern: 'frame', bots: 3, botSkill: 0.8, parCalls: 70 },
   }[difficulty];
   return {
-    id: 'practice-' + difficulty + '-' + Date.now(), title: 'Practice (' + difficulty + ')',
+    id: 'practice-' + difficulty + '-' + Date.now(), title: 'Practice (' + difficulty + ')', difficulty,
     seed: (Math.floor(Math.random() * 2 ** 31)) >>> 0, version: CONTENT_VERSION,
     pattern: map.pattern, bots: map.bots, botSkill: map.botSkill, parCalls: map.parCalls,
     ranked: false, expectedMinutes: 4, theme: store.data.settings.theme,
@@ -2099,21 +2250,21 @@ function practiceStage(difficulty) {
 }
 
 function openPracticePicker() {
-  openModal('Practice', '<p>Select difficulty. Practice is unranked and undo is allowed.</p>', [
-    { label: 'Easy', onClick: () => { closeModal(); openSetup('practice', practiceStage('easy')); } },
-    { label: 'Normal', primary: true, onClick: () => { closeModal(); openSetup('practice', practiceStage('normal')); } },
-    { label: 'Hard', onClick: () => { closeModal(); openSetup('practice', practiceStage('hard')); } },
-    { label: 'Cancel', onClick: closeModal },
-  ]);
+  openModal(() => ({ title: T('Practice'), body: `<p>${T('Select difficulty. Practice is unranked and undo is allowed.')}</p>`, actions: [
+    { label: T('Easy'), onClick: () => { closeModal(); openSetup('practice', practiceStage('easy')); } },
+    { label: T('Normal'), primary: true, onClick: () => { closeModal(); openSetup('practice', practiceStage('normal')); } },
+    { label: T('Hard'), onClick: () => { closeModal(); openSetup('practice', practiceStage('hard')); } },
+    { label: T('Cancel'), onClick: closeModal },
+  ] }));
 }
 
 function openChallengePicker() {
-  openModal('Challenge', '<p>Constrained ranked goals. Pick one:</p>' +
-    CHALLENGES.map(c => `<p><strong>${c.title}</strong> — ${c.constraint}</p>`).join(''),
-    CHALLENGES.map((c, i) => ({
-      label: c.title, primary: i === 0,
+  openModal(() => ({ title: T('Challenge'), body: `<p>${T('Constrained ranked goals. Pick one:')}</p>` +
+    CHALLENGES.map(c => `<p><strong>${T(c.title)}</strong> — ${T(c.constraint)}</p>`).join(''),
+    actions: CHALLENGES.map((c, i) => ({
+      label: T(c.title), primary: i === 0,
       onClick: () => { closeModal(); openSetup('challenge', c); },
-    })).concat([{ label: 'Cancel', onClick: closeModal }]));
+    })).concat([{ label: T('Cancel'), onClick: closeModal }]) }));
 }
 
 function openDaily() {
@@ -2123,13 +2274,15 @@ function openDaily() {
   const day = new Date().toISOString().slice(0, 10);
   const stage = dailyFor(day);
   const played = store.data.progress.dailyHistory[day];
-  openSetup('daily', { ...stage, title: stage.title + (played != null ? ` (today's best: ${played})` : '') });
+  openSetup('daily', { ...stage, todaysBest: played != null ? played : null, title: stage.title + (played != null ? ` (today's best: ${played})` : '') });
 }
 
 function refreshTitleProgress() {
   const p = store.data.progress;
-  $('#title-progress').textContent =
-    `Journey ${p.journeyDone.length}/${JOURNEY_STAGES.length} · Achievements ${Object.keys(p.achievements).length}/${Object.keys(ACHIEVEMENTS).length} · Rounds played ${p.gamesPlayed}`;
+  $('#title-progress').textContent = T('Journey {done}/{total} · Achievements {ach}/{achTotal} · Rounds played {played}', {
+    done: p.journeyDone.length, total: JOURNEY_STAGES.length,
+    ach: Object.keys(p.achievements).length, achTotal: Object.keys(ACHIEVEMENTS).length, played: p.gamesPlayed,
+  });
 }
 
 // Account nickname + cloud sync status (hosted mode only; hidden offline so
@@ -2139,11 +2292,11 @@ function refreshAccountLine() {
   if (!el) return;
   if (!platform.hosted) { el.hidden = true; return; }
   el.hidden = false;
-  const statusText = {
-    synced: 'cloud save synced', saving: 'saving…',
-    error: 'cloud save offline', offline: 'cloud save offline',
-  }[platform.syncStatus] || String(platform.syncStatus);
-  el.textContent = `${shT.playingAs.replace('{name}', platform.nickname || '…')} · ${statusText}`;
+  const statusText = T({
+    synced: N('cloud save synced'), saving: N('saving…'),
+    error: N('cloud save offline'), offline: N('cloud save offline'),
+  }[platform.syncStatus] || String(platform.syncStatus));
+  el.textContent = `${shT().playingAs.replace('{name}', platform.nickname || '…')} · ${statusText}`;
 }
 
 // Sign-in (only on <id>.starhermit.com without a token) and invite link
@@ -2160,20 +2313,20 @@ function toast(text) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
 }
-$('#btn-signin').textContent = shT.signIn;
-$('#btn-invite').textContent = shT.invite;
+setText($('#btn-signin'), () => shT().signIn);
+setText($('#btn-invite'), () => shT().invite);
 $('#btn-signin').addEventListener('click', () => { audio.event('ui'); platform.signIn(); });
 $('#btn-invite').addEventListener('click', async () => {
   audio.event('ui');
   const link = platform.inviteLink();
   if (!link) return;
-  try { await navigator.clipboard.writeText(link); toast(shT.copied); }
-  catch (_) { toast(shT.copyFailed); }
+  try { await navigator.clipboard.writeText(link); toast(shT().copied); }
+  catch (_) { toast(shT().copyFailed); }
 });
 platform.onAuth((a) => {
   refreshAccountLine();
   refreshAccountButtons();
-  if (!a.signedIn) toast(shT.signedOut); // keep playing locally
+  if (!a.signedIn) toast(shT().signedOut); // keep playing locally
 });
 
 // Seat display name in a hosted hall (host-provided), else the raw id.
@@ -2182,7 +2335,7 @@ function hostedName(id) {
     const seat = app.hosted.seats.find(s => s.playerId === id);
     if (seat && seat.name) return seat.name;
   }
-  return id === 'you' ? 'You' : id;
+  return id === 'you' ? T('You') : id;
 }
 
 // ---------------------------------------------------------------- action tray
@@ -2194,11 +2347,11 @@ $('#btn-hint').addEventListener('click', () => {
   const acts = app.session.legalActions(meId());
   const mark = acts.find(a => a.type === 'mark');
   const me = mePlayer(app.session.state);
-  const msg = mark ? `Callable now: ${mark.cells.map(i => me.card[i]).join(', ')}.`
-    : patternComplete(me.marks, app.session.state.pattern) ? 'Pattern complete — press Claim!'
-    : 'Nothing callable yet. Wait for the next call.';
-  $('#hint-text').textContent = msg;
-  announce(msg);
+  const [key, vars] = mark ? [N('Callable now: {list}.'), { list: mark.cells.map(i => me.card[i]).join(', ') }]
+    : patternComplete(me.marks, app.session.state.pattern) ? [N('Pattern complete — press Claim!')]
+    : [N('Nothing callable yet. Wait for the next call.')];
+  setText($('#hint-text'), key, vars);
+  announce(key, vars);
   audio.event('ui');
 });
 $('#btn-pause').addEventListener('click', () => { audio.event('ui'); pauseGame(); });
@@ -2277,6 +2430,34 @@ document.addEventListener('keydown', (e) => {
     nav('title');
   }
 });
+
+// ---------------------------------------------------------------- language
+// Settings › Language (or the account preference arriving) changed the game
+// language. data-i18n markup is already re-applied; re-render what code built:
+// the open screen, the round's HUD and card labels, the results and any open
+// dialog. The round, its timers and the hall socket are untouched.
+function relocalize() {
+  renderKeyHints();
+  rerenderText();
+  gfxT = GFX_STRINGS[pickLocale([getLang()])];
+  buildGfxPanel();
+  refreshGfxPanel();
+  refreshTitleProgress();
+  refreshAccountLine();
+  if (app.screen === 'journey') buildJourneyList();
+  if (app.screen === 'learn') buildLearnList();
+  if (app.screen === 'setup' && pendingSetup) $('#setup-details').innerHTML = setupDescriptor(pendingSetup.mode, pendingSetup.stage);
+  if (app.session && (app.screen === 'play' || app.gamePhase === 'paused')) {
+    $$('#card-grid .card-cell').forEach((el, i) => {
+      if (i === CENTER) el.setAttribute('aria-label', T('row {r} column {c}', { r: Math.floor(i / GRID) + 1, c: (i % GRID) + 1 }));
+    });
+    if (app.mode !== 'hosted') updateCallTimerLabel(app.gamePhase === 'active' ? Number(store.data.settings.callSpeed) : 0);
+    syncPlayUi();
+  }
+  if (app.screen === 'results') renderResults();
+  if ($('#modal-root').open) renderModal(true);
+}
+onLanguage(relocalize);
 
 // ---------------------------------------------------------------- boot
 function boot() {

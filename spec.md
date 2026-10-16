@@ -30,20 +30,24 @@ pattern close, and slam CLAIM before the other lanterns do.
 | `js/content.js` | `THEMES`, `LESSONS`, 40 `JOURNEY_STAGES`, 4 `CHALLENGES`, `dailyFor(dateISO)`, and the offline `validateContent` simulator. |
 | `js/audio.js` | `AudioEngine`: four gain buses, sampled-clip loader over `sfx/manifest.json`, seeded synth fallback per event, caption emission. |
 | `js/gfx.js` | Pure graphics quality model: presets, categories, `detectPreset(gpu)`, `resolve()`, `presetTier()`, `choosePreset()`, `describe()`. |
-| `js/gfx-strings.js` | Graphics-section strings in the nine locales and `pickLocale(navigator.languages)`. |
+| `js/i18n.js`, `js/locales/` | Localization core (`T`, `N`, `setLocale`, `onLanguage`, `applyMarkup`) and the per-locale catalogues keyed by the US-English text. |
+| `sh-language.js` | Shared StarHermit language preference (`window.StarHermitLanguage`), an unmodified copy of `tools/sh-language.js`, loaded before the SDK. |
+| `game-options.js` | Shared frame-rate / Language / Sound / Report-a-problem sections, an unmodified copy of `tools/game-options.js`. |
+| `js/save-merge.js` | `mergeSaves(remote, local, defaults)` — the cloud-save conflict merge. |
+| `js/gfx-strings.js` | Graphics-section strings in the nine locales and `pickLocale()`; the game passes its current language. |
 | `js/hall-post.js` | Loaded on demand: EffectComposer chain (GTAO, UnrealBloom, grade + vignette, SMAA/FXAA) and the RoomEnvironment PMREM map. |
 | `js/title-fx.js` | `TitleFx`: 2D-canvas sky lanterns drifting behind the main menu. |
 | `js/vendor/three/addons/` | three r185 addons (postprocessing, shaders, RoomEnvironment), resolved through the `index.html` importmap. |
 | `js/game.js` | Everything the player touches: `HallRenderer`, graphics runtime (GPU probe, adaptive scale, FPS meter, Graphics panel), screen state machine, card DOM, call loop, bots, results, settings, hosted hall client (rooms + legacy dev `/ws`), keyboard. |
 | `starhermit-sdk.js` | Shared StarHermit client (unmodified copy): launch token, renewal, sign-in, profile, cloud save, settings, controls, invite link. |
 | `js/platform.js` | Adapter over the SDK: hosted flag, nickname, cloud-save mirror + sync status, settings-KV mirroring, key bindings, sign-in/invite, Bearer fetch for the rooms lobby. No-op without a token. |
-| `js/sh-strings.js` | Account-control strings in the nine locales. |
+| `js/sh-strings.js` | Account-control strings (incl. the session-expired and terms dialogs) in the nine locales, following the game language. |
 | `js/hallnet.js` | Realtime-rooms hall: REST lobby (quick-join/create/open/leave/result/mine), binary frame codec (server-stamped 16-byte sender prefix), guest throttles, and `HallHost` — the host-side caller/rounds runner. |
 | `score-script.js` | StarHermit platform script (`server=score-script.js`): range-checks a finished solo round's total and posts it to the `high-score` leaderboard (canonical copy in the games repo's `tools/score-script.js`). |
 | `server.js` | Local dev host: static files, a dev-only `/api/v1/time` clock probe, and a dependency-free RFC6455 WebSocket hall for local play (no token). |
 | `sfx/` | 18 Opus one-shots + `manifest.txt` (canonical) / `manifest.json` (loader + generator input) / `manifest.md`. |
 | `assets/` | `title-hall.webp`, `results-lantern.webp` key art. |
-| `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js`, `gfx.test.js` (`npm test`), `e2e.mjs` (real-UI playthrough incl. Graphics presets/override/persistence at desktop + mobile and a tall-desktop 3D hall pass under Ultra and Low), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, plus older smoke harnesses. |
+| `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js`, `gfx.test.js`, `i18n.test.mjs` (every key in all nine locales; keys from `i18n-keys.mjs`) (`npm test`), `e2e.mjs` (real-UI playthrough incl. Graphics presets/override/persistence at desktop + mobile and a tall-desktop 3D hall pass under Ultra and Low), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, plus older smoke harnesses. |
 
 ---
 
@@ -407,14 +411,33 @@ readable with sound off.
 ## 10. Localization
 
 The product requires en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT.
-The Settings **Graphics** section is localized in all nine (`js/gfx-strings.js`, picked from
-`navigator.languages`). **Not implemented** for the rest: every other string is a hard-coded English literal in `index.html`,
-`js/game.js` (status lines, hints, results, modals) and `js/content.js` (pattern names, lesson
-text, stage titles), and `<html lang="en">` is fixed. The intended shape is in §17: one
-`js/i18n.js` keyed catalogue, `navigator.languages` negotiation with a Settings override persisted
-to `store.data.settings.lang`, `data-i18n` attributes for static markup, and a +40% length budget
-on every button and rail label (the layout already uses `clamp()` type and wrapping flex rows, so
-German and French expansion fit without a new breakpoint).
+Every player-facing string is localized: static markup carries `data-i18n` / `data-i18n-aria`
+(the Help cards with inline `<kbd>` use `data-i18n-html`, keyed by their authored markup), and
+code calls `T('<US-English text>', vars)` from `js/i18n.js`. Catalogues in `js/locales/` are keyed by
+the US-English text (en-US is the identity, en-GB has no spelling differences today, es-ES and
+fr-CA list their differences from es-419 and fr-FR). Content stays English data — pattern names
+and descriptions (`rules.js`), lessons, challenges, themes, achievements, audio captions — and
+translates at display time; stage titles are composed from their number. Rule refusal codes
+(`already-marked`, `number-not-called`, `spectating`, …) map to localized sentences. The status
+line names the phase in words; the raw phase is on `#live-status[data-phase]`.
+
+- Settings → Graphics → **Language → Game language** (rendered by `game-options.js` from the
+  `sh-language.js` instance) offers **Automatic — <resolved language>** plus the nine locales by
+  native name and a status line (Saved to account / Saved on this device / Account sync
+  unavailable). It is reachable from the title and from the pause dialog mid-round.
+- A change applies immediately without restarting the round or touching the hall socket:
+  markup is re-applied, `<html lang>` updates, and `relocalize()` re-renders key hints, every
+  remembered status/hint/caption line, the Graphics controls (rebuilt inside `#gfx-controls` only,
+  so the shared sections stay), title progress and account line, the open Journey/Learn list or
+  Setup screen, the round's objective, progress, roster and card labels, the results panel and an
+  open dialog (pause, practice, challenge, reset, session-expired, terms).
+- Resolution (`sh-language.js`): explicit game choice → for Automatic, the StarHermit account's
+  `preferredLanguage` (`GET /api/v1/me/language`, signed in only) → `navigator.languages` → en-US.
+  The choice is stored per player in `localStorage['lantern-bingo.language.<user|guest>']` and,
+  signed in, in the per-player settings key `ui.language` as `{ choice }`; the game's settings
+  mirror only adopts and patches its own keys. `?lang=` forces a locale for the page load (QA).
+- Layout: settings fieldsets never exceed the screen at 390 px; long German labels wrap and
+  selects shrink with an ellipsis.
 
 ---
 
@@ -484,8 +507,17 @@ and the game plays exactly as offline.
   hall over `/ws` (local dev only — that protocol is unreachable on-platform).
 - **Cover art.** `coverart.png` (1200×675).
 
-The account-control strings (sign-in, invite, toasts, "Playing as", session-expired dialog) are localized in the nine
-locales (`js/sh-strings.js`).
+- **Save conflicts.** After the boot load, cloud writes are conditional (SDK ETag). When another
+  device saved first the SDK emits `saveconflict`; the game reloads the slot, merges it with the
+  local document (`mergeSaves`: union of journey stages, lessons, play days and achievements with
+  the earliest unlock time, best score per stage and per day, the larger round count, this
+  device's settings), adopts it and saves again. A failed reload keeps local progress.
+- **Report a problem.** Settings (signed in only, from `game-options.js`) files a bug report
+  through `StarHermit.reportBug`; uncaught errors are filed as crash reports through
+  `StarHermit.captureCrashes` (SDK-capped).
+
+The account-control strings (sign-in, invite, toasts, "Playing as", session-expired and terms
+dialogs) are localized in the nine locales (`js/sh-strings.js`) and follow the game language.
 
 **Leaderboard.** One board, `high-score` (integer, higher is better, 0–100,000). When signed in,
 every finished solo round except Learn posts its total (floored at 0) through
@@ -542,14 +574,23 @@ renews the launch token (`StarHermit.renewForReconnect()`) and then makes one re
 and renews again (up to 5 times, never reopening with the old token) before the honest unavailable
 message. If the token can no longer be renewed the guest leaves the hall to the title and a
 **Your session expired** dialog explains it, with **Back to StarHermit** (`StarHermit.relaunch()`)
-and **Not now** (keep playing locally). The host leaving closes the hall for everyone. Missing SFX clip → synth fallback.
+and **Not now** (keep playing locally). A renewal that answers `'terms-required'` (or a
+`rooms/mine` 403 `terms_acceptance_required`) is handled the same way with an **Updated terms to
+accept** dialog. If `rooms/mine` succeeds but no longer lists the hall the guest was in, the loop
+ends with "This hall is no longer available — start a new hosted game from the title." (status
+line and toast) instead of joining a different hall. The host leaving closes the hall for everyone. Missing SFX clip → synth fallback.
 
 **How the e2e test drives the real UI.** `tests/e2e.mjs` serves the repo over an ephemeral port and
 drives headless Chrome through `playwright-core`. It only ever clicks visible elements —
 `[data-nav=…]`, `#setup-start`, `#card-grid .card-cell[data-cell=…]`, `#btn-call`, `#btn-claim`,
 `#btn-undo`, `#btn-hint`, `#btn-pause`, and the modal's Resume / Leave round buttons — and reads the
-DOM only to synchronize (which cells carry `.markable`, whether `#btn-claim` is disabled, what
-`#live-status` says). Both a 1280×800 desktop context and a fresh 390×844 touch context run the
+DOM only to synchronize (which cells carry `.markable`, whether `#btn-claim` is disabled, the
+phase on `#live-status[data-phase]`). Each pass ends with a language step against a stubbed
+StarHermit API (`tests/starhermit-e2e.mjs`): `GET /api/v1/me/language` → fr-CA makes Automatic
+resolve to fr-CA; choosing Deutsch re-renders Settings in place (the Language select survives),
+PUTs `ui.language`, Report a problem posts to `/reports`, and no fieldset is cut off; then a
+practice round is paused, Italiano is chosen from the pause dialog's Settings, and the pause
+dialog, objective, tray, card labels and status re-render while the card stays the same. Both a 1280×800 desktop context and a fresh 390×844 touch context run the
 full flow; any `pageerror` or non-noise `console.error` fails the run.
 
 ---
@@ -568,17 +609,18 @@ full flow; any `pageerror` or non-noise `console.error` fails the run.
   golden easy/medium/hard sessions terminate with valid winners; all 44 content items pass the
   offline validator; Journey has 40 unique ids and seeds; the daily is stable per day and differs
   across days; challenges validate.
-- **`tests/platform.test.js` (7).** Adapter + real SDK with stubbed fetch: fragment token read,
+- **`tests/platform.test.js` (9).** Adapter + real SDK with stubbed fetch: fragment token read,
   stripped and decoded; profile nickname (never username) with Bearer; cloud-save round-trip at
   `game:<slug>` with sync status; settings KV load + changed-key PATCH after priming; binding
-  overrides and invite link; standalone = zero fetches; sign-in offered on the platform host.
-- **`tests/hallnet.test.js` (13).** Frame codec round-trip + caps; socket identity harvest
+  overrides and invite link; standalone = zero fetches; sign-in offered on the UUID platform host; a stale conditional write is refused (412), fires the conflict hook, and a reload + `mergeSaves` lands; `mergeSaves` keeps the best of both records.
+- **`tests/hallnet.test.js` (15).** Frame codec round-trip + caps; socket identity harvest
   (room/roster/whoami); guest 30 msg/s throttle; host seating + bot fill; mid-round spectator →
   next-round seat; forced-identity + bounds validation + idempotent duplicates; authoritative call
   cadence with matching snapshot hash; round-end restart; seat retention across an absent guest; first connect uses the current token
   without renewing; reconnect renews first and opens with the new token; `'retry'` never reopens
-  the old URL; `'relaunch'` stops and raises the session-expired prompt; prompt strings in all
-  nine locales.
+  the old URL; `'relaunch'` stops and raises the session-expired prompt; `'terms-required'` stops and raises the
+  terms prompt; `mineStatus` separates listed rooms, terms consent and failures; prompt strings in
+  all nine locales.
 
 `npm run validate` runs the same offline validator standalone (44 items, 0 failures): it plays a
 perfect player through each stage and asserts the pattern is reachable within 75 calls and that
@@ -640,36 +682,32 @@ spheres by design (pillar 5), and there is no humanoid in the game.
 
 ## 16. Known limitations
 
-1. **No localization.** English only, `lang="en"` fixed (§10).
-2. **Local-player assumptions in offline paths.** `tryMarkCell`, `tryClaim`, `endRound` and parts of
+1. **Local-player assumptions in offline paths.** `tryMarkCell`, `tryClaim`, `endRound` and parts of
    `showResults` address the local seat as the literal id `'you'` and index `players[0]`. This is
    correct offline (the local seat is always seat 0) and hosted play uses separate code paths, but
    the two conventions have not been unified behind `meId()`.
-3. **Invalid-actions row sign.** The results table renders the invalid-actions row through a
+2. **Invalid-actions row sign.** The results table renders the invalid-actions row through a
    `v >= 0 ? '+' : ''` formatter, so a zero penalty prints "+0"; the deduction itself is correct in
    the total.
-4. **Bots do not mis-claim.** Bots only mark and claim correctly, so `claim-too-late` and bot false
+3. **Bots do not mis-claim.** Bots only mark and claim correctly, so `claim-too-late` and bot false
    claims are reachable in the rules but essentially never seen in play.
-5. **Hosted halls are host-routed rooms with no live-platform verification.** The rooms REST
+4. **Hosted halls are host-routed rooms with no live-platform verification.** The rooms REST
    shapes, roster/presence pushes, and host-assignment rules follow the platform wiki but are
    parsed defensively (self/host ids come from roster flags or a host whoami echo); only the mock
    platform in `tests/hall-rooms-smoke.mjs` has run them end-to-end. The host tab backgrounding
    stalls the caller for all guests (the relay owns no sim). Friend invites and matchmaking beyond
    quick-join are not implemented.
-6. **Deck exhaustion has no ceremony.** If 75 calls pass with no winner the round stays active with
+5. **Deck exhaustion has no ceremony.** If 75 calls pass with no winner the round stays active with
    `call` illegal; the player must leave via Pause. There is no "nobody claimed" results screen.
-7. **Achievement counters are session-scoped.** `achievementCtx.linesTotal` and `winStreak` reset on
+6. **Achievement counters are session-scoped.** `achievementCtx.linesTotal` and `winStreak` reset on
    reload, so Line Keeper and Steady Flame are effectively per-session.
-8. **Hosted replays are not exportable.** Copy Replay is hidden on hosted results because the
+7. **Hosted replays are not exportable.** Copy Replay is hidden on hosted results because the
    envelope lives on the server.
 
 ---
 
 ## 17. Design intent not yet implemented
 
-- **Localization (§10).** `js/i18n.js` with the nine required catalogues, `data-i18n` attributes in
-  `index.html`, `navigator.languages` negotiation, a Settings language selector persisted in the
-  save file, and localized pattern/lesson/stage strings moved out of `content.js`.
 - **Unified seat identity.** Route every offline read through `meId()`/`mePlayer()` so the local
   seat is never assumed to be `players[0]`.
 - **A no-winner terminal state.** Emit a `deck-exhausted` terminal reason and show a results screen

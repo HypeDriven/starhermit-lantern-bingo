@@ -112,6 +112,10 @@ export function createPlatform(deps = {}) {
   platform.flushCloud = flushCloud;
   platform.onSync = (fn) => syncListeners.add(fn);
   platform.onAuth = (fn) => authListeners.add(fn);
+  // A cloud write lost to a newer save from another device (conditional
+  // writes after a load): fn() reloads, merges and saves again.
+  platform.onConflict = (fn) => sh.on('saveconflict', () => fn());
+  platform.cloudReadFailed = () => !!(sh.saveLoadFailed() || sh.saveConflicted());
   platform.pushSettings = pushSettings;
   platform.loadSettings = loadSettings;
   platform.primeSettings = primeSettings;

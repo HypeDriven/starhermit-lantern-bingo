@@ -17,7 +17,7 @@ import { AudioEngine } from './audio.js';
 import { createPlatform } from './platform.js';
 import { RoomsClient, HallHost, renewThenReconnect } from './hallnet.js';
 import {
-  PRESETS, CATEGORIES, SHADOW_MAP, LANTERN_COUNT, detectPreset, resolve, presetTier, choosePreset, describe,
+  PRESETS, CATEGORIES, SHADOW_MAP, LANTERN_COUNT, detectLevel, presetForLevel, resolve, presetTier, choosePreset, describe,
 } from './gfx.js';
 import { GFX_STRINGS, pickLocale } from './gfx-strings.js';
 import { TitleFx } from './title-fx.js';
@@ -175,14 +175,18 @@ const gfxEnv = (() => {
   } catch (_) { gpu = ''; }
   const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches &&
     !window.matchMedia('(any-pointer: fine)').matches;
-  const mobile = coarse || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || '');
-  return { gpu, mobile, detected: detectPreset(gpu, { mobile }) };
+  // StarHermit hardware level → Auto preset (SwiftShader = level 0 → Low; phones cap at Balanced).
+  const G = globalThis.StarHermitGpu;
+  const system = G ? G.detectSystem() : {};
+  const mobile = !!system.mobile || coarse || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || '');
+  const level = detectLevel(gpu, { ...system, mobile });
+  return { gpu, mobile, level, detected: presetForLevel(level) };
 })();
 
 const gfxRuntime = { adaptiveScale: 1, frames: [], fps: 0, postFailed: false };
 
 function currentGfx() {
-  return resolve(store.data.settings.graphics, gfxEnv.detected);
+  return resolve(store.data.settings.graphics, gfxEnv.detected, gfxEnv.level);
 }
 
 /** Device pixel ratio for a resolved setting: min(dpr, preset cap) × render scale × adaptive. */
@@ -233,11 +237,12 @@ function loadHallPost() {
 
 // ---------------------------------------------------------------- renderer
 // Procedural floor texture: lacquered boards in concentric rings with grain (greyscale, so the
-// theme's floor colour still tints it).
-function makeFloorTexture() {
+// theme's floor colour still tints it). Drawn in 512-px units at the preset budget's size.
+function makeFloorTexture(size = 512) {
   const c = document.createElement('canvas');
-  c.width = c.height = 512;
+  c.width = c.height = size;
   const ctx = c.getContext('2d');
+  ctx.scale(size / 512, size / 512);
   let seed = 11;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   ctx.fillStyle = '#d8d8d8';
@@ -263,28 +268,53 @@ function makeFloorTexture() {
   return tex;
 }
 
-// Rounded, bevelled card tile (lies flat, top face at y = 0.08).
-function makeTileGeometry() {
+// Material class per preset budget: Lambert (Low), Standard (Balanced), Physical (High/Ultra, where
+// `phys` gives the extra clearcoat parameters; without `phys` Standard is used).
+function hallMaterial(kind, params, phys) {
+  if (kind === 'lambert') {
+    const { roughness, metalness, ...rest } = params;
+    return new THREE.MeshLambertMaterial(rest);
+  }
+  if (kind === 'physical' && phys) return new THREE.MeshPhysicalMaterial({ ...params, ...phys });
+  return new THREE.MeshStandardMaterial(params);
+}
+
+// Warm dust motes (count = preset budget's `motes`), spread deterministically through the hall.
+function moteGeometry(motes) {
+  const pos = new Float32Array(motes * 3);
+  for (let i = 0; i < motes; i++) {
+    pos[i * 3] = ((i * 73) % 100) / 100 * 12 - 6;
+    pos[i * 3 + 1] = ((i * 37) % 100) / 100 * 5;
+    pos[i * 3 + 2] = ((i * 53) % 100) / 100 * 6 - 3.5;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return geo;
+}
+
+// Rounded, bevelled card tile (lies flat, top face at y = 0.08); `k` is the preset's geometry LOD.
+function makeTileGeometry(k = 1) {
   const s = 0.29, r = 0.08;
   const sh = new THREE.Shape();
   sh.moveTo(-s + r, -s); sh.lineTo(s - r, -s); sh.quadraticCurveTo(s, -s, s, -s + r);
   sh.lineTo(s, s - r); sh.quadraticCurveTo(s, s, s - r, s); sh.lineTo(-s + r, s);
   sh.quadraticCurveTo(-s, s, -s, s - r); sh.lineTo(-s, -s + r); sh.quadraticCurveTo(-s, -s, -s + r, -s);
-  const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 4 });
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02,
+    bevelSegments: Math.max(1, Math.round(2 * k)), curveSegments: Math.max(2, Math.round(4 * k)) });
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, 0.02, 0);
   return geo;
 }
 
-// Paper lantern profile (lathe) — ribbed silhouette for the detailed tier.
-function makeLanternGeometry() {
+// Paper lantern profile (lathe) — ribbed silhouette for the detailed tier; `k` is the geometry LOD.
+function makeLanternGeometry(k = 1) {
   const pts = [];
   for (let i = 0; i <= 12; i++) {
     const t = i / 12, y = (t - 0.5) * 0.7;
     const rib = 1 + 0.035 * Math.cos(t * Math.PI * 12);
     pts.push(new THREE.Vector2(Math.max(0.06, Math.sin(t * Math.PI) * 0.3 * rib + 0.06 * (1 - Math.sin(t * Math.PI))), y));
   }
-  return new THREE.LatheGeometry(pts, 16);
+  return new THREE.LatheGeometry(pts, Math.max(8, Math.round(16 * k)));
 }
 
 class HallRenderer {
@@ -436,16 +466,7 @@ class HallRenderer {
     this.scene.add(this.cellGroup);
 
     // warm dust motes drifting up through the lantern light (animated background only)
-    const motes = 90;
-    const pos = new Float32Array(motes * 3);
-    for (let i = 0; i < motes; i++) {
-      pos[i * 3] = ((i * 73) % 100) / 100 * 12 - 6;
-      pos[i * 3 + 1] = ((i * 37) % 100) / 100 * 5;
-      pos[i * 3 + 2] = ((i * 53) % 100) / 100 * 6 - 3.5;
-    }
-    const moteGeo = new THREE.BufferGeometry();
-    moteGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
+    this.motes = new THREE.Points(moteGeometry(90), new THREE.PointsMaterial({
       color: 0xffc98a, size: 0.05, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
     this.scene.add(this.motes);
@@ -491,18 +512,20 @@ class HallRenderer {
     for (const k of ['lanterns', 'lanternCaps']) {
       if (this[k]) { this.scene.remove(this[k]); this[k].geometry.dispose(); this[k].material.dispose(); this[k] = null; }
     }
+    const b = this.g.budget;
+    const k = b.segments;
     let geo;
-    if (detailed) geo = makeLanternGeometry();
-    else { geo = new THREE.SphereGeometry(0.28, 12, 10); geo.scale(1, 1.25, 1); }
+    if (detailed) geo = makeLanternGeometry(k);
+    else { geo = new THREE.SphereGeometry(0.28, Math.max(6, Math.round(12 * k)), Math.max(5, Math.round(10 * k))); geo.scale(1, 1.25, 1); }
     const col = this._lanternColor || 0xffb454;
-    const mat = new THREE.MeshStandardMaterial({
+    const mat = hallMaterial(b.material, {
       color: col, emissive: col, emissiveIntensity: detailed ? 2.2 : 1.5, roughness: 0.5,
     });
     const inst = new THREE.InstancedMesh(geo, mat, count);
     let caps = null;
     if (detailed) {
-      const capGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.06, 10);
-      caps = new THREE.InstancedMesh(capGeo, new THREE.MeshStandardMaterial({ color: 0x2a1a14, roughness: 0.5, metalness: 0.3 }), count * 2);
+      const capGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.06, Math.max(6, Math.round(10 * k)));
+      caps = new THREE.InstancedMesh(capGeo, hallMaterial(b.material, { color: 0x2a1a14, roughness: 0.5, metalness: 0.3 }), count * 2);
     }
     const dummy = new THREE.Object3D();
     this._lanternData = [];
@@ -569,6 +592,15 @@ class HallRenderer {
     this.g = g;
     if (!this._makeGL()) return;
     const detailed = g.detail === 'detailed';
+    // Asset variants for the preset budget: material class, geometry LOD, floor texture size, motes.
+    const b = g.budget;
+    const budgetKey = [b.material, b.segments, b.floor].join('|');
+    const budgetChanged = budgetKey !== this._budgetKey;
+    if (budgetChanged) { this._budgetKey = budgetKey; this._applyBudgetAssets(b); }
+    if (this.motes.geometry.attributes.position.count !== b.motes) {
+      this.motes.geometry.dispose();
+      this.motes.geometry = moteGeometry(b.motes);
+    }
     // shadows
     const size = SHADOW_MAP[g.shadows];
     this.renderer.shadowMap.enabled = size > 0;
@@ -580,18 +612,18 @@ class HallRenderer {
     }
     // lanterns
     const count = LANTERN_COUNT[g.lanterns];
-    if (!this.lanterns || this.lanterns.count !== count || this._lanternsDetailed !== detailed) {
+    if (!this.lanterns || this.lanterns.count !== count || this._lanternsDetailed !== detailed || budgetChanged) {
       this._buildLanterns(count, detailed);
       this._lanternsDetailed = detailed;
     }
     // surface detail: textured floor, lacquered board, bevelled glossy tiles, brass pole, glossy ball
-    if (detailed && !this.floorTex) this.floorTex = makeFloorTexture();
+    if (detailed && !this.floorTex) this.floorTex = makeFloorTexture(b.floor);
     const fm = this.floor.material;
     fm.map = detailed ? this.floorTex : null;
     fm.roughness = detailed ? 0.55 : 0.9;
     fm.metalness = 0;
     this.board.visible = detailed;
-    if (detailed && !this.tileGeo) this.tileGeo = makeTileGeometry();
+    if (detailed && !this.tileGeo) this.tileGeo = makeTileGeometry(b.segments);
     for (const m of this.cells) {
       m.geometry = detailed ? this.tileGeo : this.boxGeo;
       m.material.clearcoat = detailed ? 0.8 : 0;
@@ -622,6 +654,33 @@ class HallRenderer {
     this.postKey = null; // rebuild the post chain on the next frame
     if (g.post || g.reflections === 'on') loadHallPost().then(() => { this.postKey = null; this._applyReflections(); });
     this.resize();
+  }
+
+  // Rebuild the hall's meshes for a preset budget (materials keep their current colours).
+  _applyBudgetAssets(b) {
+    const seg = (n, min) => Math.max(min, Math.round(n * b.segments));
+    const swap = (mesh, params, phys) => {
+      const old = mesh.material;
+      mesh.material = hallMaterial(b.material, params, phys);
+      if (old.emissive && mesh.material.emissive) mesh.material.emissive.copy(old.emissive);
+      old.dispose();
+    };
+    this.floor.geometry.dispose();
+    this.floor.geometry = new THREE.CylinderGeometry(7.5, 7.5, 0.2, seg(64, 16));
+    swap(this.floor, { color: this.floor.material.color.getHex(), roughness: 0.9 });
+    if (this.floorTex && this.floorTex.image.width !== b.floor) { this.floorTex.dispose(); this.floorTex = null; }
+    swap(this.board, { color: 0x5a1c1c, roughness: 0.45 }, { clearcoat: 0.8, clearcoatRoughness: 0.2 });
+    this.ball.geometry.dispose();
+    this.ball.geometry = new THREE.SphereGeometry(0.85, seg(48, 16), seg(32, 10));
+    swap(this.ball, {
+      color: 0xfff4e0, roughness: 0.3, map: this.ballTexture,
+      emissive: 0xffffff, emissiveMap: this.ballTexture, emissiveIntensity: 0.85,
+    }, {});
+    this.ballPole.geometry.dispose();
+    this.ballPole.geometry = new THREE.CylinderGeometry(0.05, 0.05, 2.2, seg(12, 6));
+    swap(this.ballPole, { color: 0x554433, roughness: 0.8 });
+    if (this.tileGeo) { this.tileGeo.dispose(); this.tileGeo = null; }
+    for (const m of this.cells) swap(m, { color: m.material.color.getHex(), roughness: 0.6 }, {});
   }
 
   _applyReflections() {
@@ -2113,7 +2172,7 @@ function refreshGfxPanel() {
   const r = app.renderer && app.renderer.ok ? app.renderer.pixels() : null;
   const pr = gfxPixelRatio(g);
   const px = r || [Math.round(window.innerWidth * pr), Math.round(window.innerHeight * pr)];
-  $('#gfx-summary').textContent = `${gfxEnv.gpu || gfxT.gpuUnknown} · ${describe(g, px, gfxT.sum)}`;
+  $('#gfx-summary').textContent = `${gfxEnv.gpu || gfxT.gpuUnknown} · ${(gfxT.level || 'Level {level}').replace('{level}', String(gfxEnv.level ?? 0))} · ${describe(g, px, gfxT.sum)}`;
   $('#gfx-post-note').hidden = !gfxRuntime.postFailed;
 }
 

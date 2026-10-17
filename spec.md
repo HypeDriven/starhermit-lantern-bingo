@@ -29,7 +29,8 @@ pattern close, and slam CLAIM before the other lanterns do.
 | `js/session.js` | `Session` — the only mutable holder of rules state; command log, undo snapshots, replay envelope + `verifyReplay`, `botCommands`. |
 | `js/content.js` | `THEMES`, `LESSONS`, 40 `JOURNEY_STAGES`, 4 `CHALLENGES`, `dailyFor(dateISO)`, and the offline `validateContent` simulator. |
 | `js/audio.js` | `AudioEngine`: four gain buses, sampled-clip loader over `sfx/manifest.json`, seeded synth fallback per event, caption emission. |
-| `js/gfx.js` | Pure graphics quality model: presets, categories, `detectPreset(gpu)`, `resolve()`, `presetTier()`, `choosePreset()`, `describe()`. |
+| `js/gfx.js` | Pure graphics quality model: presets, categories, per-preset budgets (`BUDGETS`, `budget()`), hardware level → preset (`LEVELS`, `detectLevel()`, `presetForLevel()`, `detectPreset()`), `resolve()`, `presetTier()`, `choosePreset()`, `describe()`. |
+| `js/gpu-level.js` | Shared StarHermit hardware-level detector (`window.StarHermitGpu`; copy of the canonical tools file, not edited here). |
 | `js/i18n.js`, `js/locales/` | Localization core (`T`, `N`, `setLocale`, `onLanguage`, `applyMarkup`) and the per-locale catalogues keyed by the US-English text. |
 | `sh-language.js` | Shared StarHermit language preference (`window.StarHermitLanguage`), an unmodified copy of `tools/sh-language.js`, loaded before the SDK. |
 | `game-options.js` | Shared frame-rate / Language / Sound / Report-a-problem sections, an unmodified copy of `tools/game-options.js`. |
@@ -47,7 +48,7 @@ pattern close, and slam CLAIM before the other lanterns do.
 | `server.js` | Local dev host: static files, a dev-only `/api/v1/time` clock probe, and a dependency-free RFC6455 WebSocket hall for local play (no token). |
 | `sfx/` | 18 Opus one-shots + `manifest.txt` (canonical) / `manifest.json` (loader + generator input) / `manifest.md`. |
 | `assets/` | `title-hall.webp`, `results-lantern.webp` key art. |
-| `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js`, `gfx.test.js`, `i18n.test.mjs` (every key in all nine locales; keys from `i18n-keys.mjs`) (`npm test`), `e2e.mjs` (real-UI playthrough incl. Graphics presets/override/persistence at desktop + mobile and a tall-desktop 3D hall pass under Ultra and Low), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, plus older smoke harnesses. |
+| `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js`, `gfx.test.js` (hardware level → preset: SwiftShader / llvmpipe / no WebGL / `Radeon Graphics` / UHD → Low, Iris Xe → Balanced, GTX 1070 → High, RTX 4080 / 5090 → Ultra, phones and tablets Balanced at most; the per-preset budget table and its level scaling), `i18n.test.mjs` (every key in all nine locales; keys from `i18n-keys.mjs`) (`npm test`), `e2e.mjs` (real-UI playthrough incl. Auto detecting Low with the summary naming Level 0 on the software GPU, Graphics presets/override/persistence at desktop + mobile and a tall-desktop 3D hall pass under Ultra and Low), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, `gfx-bench.mjs` (dev-only hook for `tools/gfx-bench.mjs`), plus older smoke harnesses. |
 
 ---
 
@@ -356,15 +357,55 @@ lanterns with caps, a textured plank floor, a lacquered clearcoat board under be
 tiles, a brass pole and a clearcoat banded call ball; on the DOM side a lit-paper/lacquer finish
 on card cells, the call chip, panels and buttons — paint only, never lower contrast, off under High
 contrast). The Settings **Graphics** section offers a quality preset (Auto, chosen from the
-detected GPU — software renderers get Low, discrete GPUs and Apple M get High, others Balanced,
-touch devices capped at Balanced; Low; Balanced; High; Ultra), a render scale (50–200%), a
+StarHermit hardware level below; Low; Balanced; High; Ultra), a render scale (50–200%), a
 per-effect override for each category ("From preset (…)" by default; choosing a preset clears
 overrides), adaptive resolution (steps the resolution down to 60% when ~90-frame averages exceed
 26 ms and back up under 14 ms) and a frame-rate readout (bottom-left, non-interactive), plus a
-summary "GPU · cost · W×H px". Changes apply immediately (no reload; canvas MSAA changes swap the
+summary "GPU · Level N · cost · W×H px" (the level label localized). Changes apply immediately (no reload; canvas MSAA changes swap the
 WebGL renderer, keeping the scene) and persist in `store.data.settings.graphics` (cloud-mirrored
 with the other settings). If the post-processing addons or chain fail, the hall renders without
 them and the panel says so. The current preset is exposed as `body[data-gfx-preset]`.
+
+**Hardware level and Auto.** `js/gpu-level.js` (the shared StarHermit detector,
+`window.StarHermitGpu`, loaded as a classic script before `js/game.js`) rates the GPU 0–20 (0 =
+Galaxy S20 / Intel UHD or weaker, 20 = RTX 5090, each level ≈ 1.23× the one below; laptop parts two
+levels lower; phones, tablets and ≤ 4 GB machines capped at 9; software renderers and browsers
+without WebGL 0). Auto picks **Low from 0, Balanced from 4, High from 10, Ultra from 17**, so
+strong desktop GPUs get Ultra; adaptive resolution still steps down when frames are slow. On
+phones and tablets the shared frame-rate option paces Auto at half the display refresh rate and
+starts at 16 simultaneous sounds.
+
+**Per-preset budgets** (`BUDGETS` in `js/gfx.js`; each tuned to hold 60 FPS on the weakest GPU Auto
+gives it — Low: level 0 phones / Intel UHD, Balanced: level 4 Iris Xe, High: level 10 GTX 1070,
+Ultra: level 17 RTX 4080). Gameplay is identical on every preset.
+
+| Preset | Hall materials (tiles, board, ball, pole, floor, lanterns) | Floor texture | Geometry LOD | Dust motes | Title sky lanterns | Bloom / GTAO resolution |
+|---|---|---|---|---|---|---|
+| Low | Lambert | 256 px | ½ | 30 | 0.75× | ½ / ½ |
+| Balanced | Standard | 512 px | ¾ | 60 | 1× | ½ / ½ |
+| High | Physical (clearcoat tiles, board, ball) | 512 px | 1 | 90 | 1× | ½ / ½ |
+| Ultra | Physical (clearcoat tiles, board, ball) | 1024 px | 1.5 | 150 | 1.25× | full / full |
+
+Geometry LOD multiplies the segments of the floor disc, call ball, pole, lantern lathe, spheres
+and caps, and the tile bevel/curve segments. Motes scale within the preset by the hardware level
+(`StarHermitGpu.scaleBudget`, ≤ 2×; fewer below the floor). Materials, geometry, the floor texture,
+motes and lanterns are rebuilt when the preset changes (cell colours are kept). Bloom and GTAO run
+at a fraction of the frame through a wrapped pass `setSize`. The hall is collapsed on compact
+(phone) layouts, so phones render only the DOM card and the 2D title lanterns.
+
+**60 FPS benchmark** (`node tools/gfx-bench.mjs lantern-bingo [--mobile --presets low,balanced]`,
+dev-only, real GPUs; hook `tests/gfx-bench.mjs` picks the preset in Settings → Graphics, starts a
+Quick Play round and keeps marking callable cells, calling and claiming through the visible card,
+starting a new round after results). Measured 2026-10-17 (an AMD Radeon iGPU at level 2 projected
+to each preset's floor level, the same page with draws skipped subtracted; typical p50 ≤ 12 ms and
+slow p90 ≤ 14 ms, CPU p90 ≤ 6 ms on the NVIDIA run):
+
+- Desktop 1920×1080: PASS low (typical 0.00, slow 0.00 ms at level 0; CPU 0.50 ms); PASS
+  balanced (typical 0.29, slow 0.51 ms at level 4; CPU 1.10 ms); PASS high (typical 0.07, slow
+  0.20 ms at level 10; CPU 1.80 ms); PASS ultra (typical 0.03, slow 0.00 ms at level 17; CPU
+  1.20 ms).
+- Mobile 390×844 @3×: PASS low (typical 0.00, slow 0.00 ms at level 0; CPU 0.20 ms); PASS
+  balanced (typical 0.03, slow 0.00 ms at level 4; CPU 0.20 ms).
 
 **Visual assets the design calls for.** (1) A title backdrop that says "festival hall at night"
 before any text is read, dark enough in the centre for a menu column to sit on it. (2) A results

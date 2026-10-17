@@ -2,7 +2,7 @@
 // this panel follows navigator.languages (exact tag, then language fallback, then en-US).
 
 const en = {
-  graphics: 'Graphics', quality: 'Quality', auto: 'Auto (detected: {tier})',
+  graphics: 'Graphics', quality: 'Quality', level: 'Level {level}', auto: 'Auto (detected: {tier})',
   low: 'Low', balanced: 'Balanced', high: 'High', ultra: 'Ultra',
   renderScale: 'Render scale', fromPreset: 'From preset ({tier})',
   adaptive: 'Adaptive resolution', showFps: 'Show frame rate',
@@ -20,7 +20,7 @@ const en = {
 const enUS = { ...en, cat: { ...en.cat, grade: 'Color grade' } };
 
 const es = {
-  graphics: 'Gráficos', quality: 'Calidad', auto: 'Automática (detectada: {tier})',
+  graphics: 'Gráficos', quality: 'Calidad', level: 'Nivel {level}', auto: 'Automática (detectada: {tier})',
   low: 'Baja', balanced: 'Equilibrada', high: 'Alta', ultra: 'Ultra',
   renderScale: 'Escala de renderizado', fromPreset: 'Según el ajuste ({tier})',
   adaptive: 'Resolución adaptativa', showFps: 'Mostrar fotogramas por segundo',
@@ -37,7 +37,7 @@ const es = {
 const es419 = { ...es, auto: 'Automática (detectada: {tier})', cat: { ...es.cat, bloom: 'Brillo de linternas', lanterns: 'Linternas' }, sum: { ...es.sum, lanterns: 'linternas' } };
 
 const de = {
-  graphics: 'Grafik', quality: 'Qualität', auto: 'Automatisch (erkannt: {tier})',
+  graphics: 'Grafik', quality: 'Qualität', level: 'Stufe {level}', auto: 'Automatisch (erkannt: {tier})',
   low: 'Niedrig', balanced: 'Ausgewogen', high: 'Hoch', ultra: 'Ultra',
   renderScale: 'Renderskalierung', fromPreset: 'Laut Voreinstellung ({tier})',
   adaptive: 'Adaptive Auflösung', showFps: 'Bildrate anzeigen',
@@ -53,7 +53,7 @@ const de = {
 };
 
 const fr = {
-  graphics: 'Graphismes', quality: 'Qualité', auto: 'Auto (détectée : {tier})',
+  graphics: 'Graphismes', quality: 'Qualité', level: 'Niveau {level}', auto: 'Auto (détectée : {tier})',
   low: 'Basse', balanced: 'Équilibrée', high: 'Haute', ultra: 'Ultra',
   renderScale: 'Échelle de rendu', fromPreset: 'Selon le préréglage ({tier})',
   adaptive: 'Résolution adaptative', showFps: 'Afficher les images par seconde',
@@ -70,7 +70,7 @@ const fr = {
 const frCA = { ...fr, showFps: 'Afficher la fréquence d’images', cat: { ...fr.cat, antialias: 'Lissage des bords' }, sum: { ...fr.sum, noAa: 'sans lissage' } };
 
 const ptBR = {
-  graphics: 'Gráficos', quality: 'Qualidade', auto: 'Automática (detectada: {tier})',
+  graphics: 'Gráficos', quality: 'Qualidade', level: 'Nível {level}', auto: 'Automática (detectada: {tier})',
   low: 'Baixa', balanced: 'Equilibrada', high: 'Alta', ultra: 'Ultra',
   renderScale: 'Escala de renderização', fromPreset: 'Conforme a predefinição ({tier})',
   adaptive: 'Resolução adaptativa', showFps: 'Mostrar taxa de quadros',
@@ -86,7 +86,7 @@ const ptBR = {
 };
 
 const it = {
-  graphics: 'Grafica', quality: 'Qualità', auto: 'Automatica (rilevata: {tier})',
+  graphics: 'Grafica', quality: 'Qualità', level: 'Livello {level}', auto: 'Automatica (rilevata: {tier})',
   low: 'Bassa', balanced: 'Bilanciata', high: 'Alta', ultra: 'Ultra',
   renderScale: 'Scala di rendering', fromPreset: 'Da preimpostazione ({tier})',
   adaptive: 'Risoluzione adattiva', showFps: 'Mostra fotogrammi al secondo',

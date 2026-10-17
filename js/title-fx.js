@@ -1,5 +1,5 @@
 // Title-screen sky lanterns: a 2D canvas behind the main menu with paper lanterns drifting
-// upward over the painted hall. Count follows the `lanterns` tier, halos follow `bloom`,
+// upward over the painted hall. Count follows the `lanterns` tier (× the preset budget's `title`), halos follow `bloom`,
 // and `background: static` (or reduced motion) draws a single still frame.
 const COUNT = { low: 10, medium: 18, high: 28 };
 
@@ -31,7 +31,7 @@ export class TitleFx {
     this.g = g;
     this.pixelRatio = pixelRatio;
     this.moving = g.background === 'animated' && !reducedMotion;
-    const n = COUNT[g.lanterns] || COUNT.low;
+    const n = Math.round((COUNT[g.lanterns] || COUNT.low) * ((g.budget && g.budget.title) || 1)); // × preset budget `title`
     if (this.items.length !== n) {
       this._seed = 7;
       this.items = Array.from({ length: n }, () => this._spawn(true));

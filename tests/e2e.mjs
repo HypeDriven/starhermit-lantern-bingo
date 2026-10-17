@@ -136,6 +136,9 @@ async function runPass(browser, tag, viewport, opts = {}) {
       await page.click('[data-nav="settings"]');
       await page.waitForSelector('#screen-settings:not([hidden])');
       await page.locator('#gfx-preset').scrollIntoViewIfNeeded();
+      // Auto on the software GPU is Low and the summary names the StarHermit hardware level (0).
+      if (!/Low/.test(await page.textContent('#gfx-preset option[value="auto"]'))) throw new Error('Auto should detect Low on a software GPU');
+      if (!/Level 0/.test(await page.textContent('#gfx-summary'))) throw new Error('summary lacks the hardware level: ' + (await page.textContent('#gfx-summary')));
       await page.selectOption('#gfx-preset', 'low');
       await page.waitForSelector('body[data-gfx-preset="low"]');
       await page.selectOption('#gfx-preset', 'high');

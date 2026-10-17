@@ -36,6 +36,15 @@ const GradeShader = {
     }`,
 };
 
+// Run a post pass at a fraction of the frame (per-preset budget). EffectComposer sizes every pass to the
+// full frame in addPass/setSize, so the pass's own setSize is wrapped to apply the scale.
+function atScale(pass, k) {
+  if (!(k > 0 && k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
 /** Build the composer for resolved graphics `g`; returns null when no pass is needed. */
 export function buildComposer(renderer, scene, camera, g, w, h, pixelRatio) {
   if (!g.post) return null;
@@ -48,7 +57,7 @@ export function buildComposer(renderer, scene, camera, g, w, h, pixelRatio) {
   composer.setSize(w, h);
   composer.addPass(new RenderPass(scene, camera));
   if (g.ao !== 'off') {
-    const ao = new GTAOPass(scene, camera, pw, ph);
+    const ao = atScale(new GTAOPass(scene, camera, pw, ph), g.budget ? g.budget.aoRes : 1);
     ao.output = GTAOPass.OUTPUT.Default;
     ao.blendIntensity = 0.7;
     ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
@@ -57,7 +66,7 @@ export function buildComposer(renderer, scene, camera, g, w, h, pixelRatio) {
   }
   if (g.bloom === 'on') {
     // High threshold: only lantern paper, the call ball's lit face and highlights bloom.
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.45, 0.25, 2.0));
+    composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), 0.45, 0.25, 2.0), g.budget ? g.budget.bloomRes : 1));
   }
   if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
   composer.addPass(new OutputPass());

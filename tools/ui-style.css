@@ -1,0 +1,107 @@
+/* Lantern Bingo — the browser build's css/style.css rewritten class-based for
+   the engine's UI (`npm run css` converts it into assets/ui-style.json).
+   Element selectors, ids, body classes and @media do not convert: every
+   widget names its classes and the breakpoints are layouts picked in
+   native/screens.ts. The old body.gfx-detailed paint (lit paper and lacquer
+   on panels and buttons) is the `-lux` classes, chosen above the Low
+   graphics tier; high contrast, larger text and reduced motion are the
+   runtime's options (native/style.ts swaps the tokens for high contrast).
+   The card cells and the call chip are drawn in native/screens.ts. */
+
+:root {
+  --bg: #0f1226;
+  --accent: #ffd7a0;
+  --accent-2: #ffb454;
+  --panel: #1a2040;
+  --panel-2: #2b3a67;
+  --panel-3: #3d5290;
+  --ink: #e8ecff;
+  --danger: #ff7a7a;
+  --ok: #8be09b;
+  --line: #ffffff2e;
+}
+
+* { box-sizing: border-box; }
+
+.body { color: var(--ink); font-size: 16px; }
+.muted { color: #e8ecffb8; font-size: 14.4px; }
+.strong { color: var(--ink); font-size: 16px; font-weight: 700; }
+.game-title { color: var(--accent); font-size: 30px; font-weight: 700; letter-spacing: 1px; }
+.game-title-lux { color: var(--accent); font-size: 30px; font-weight: 700; letter-spacing: 1px; text-shadow: 0 0 18px #ffb45459; }
+.status-line { color: var(--ink); font-size: 17px; }
+.captions { color: #e8ecffbf; font-size: 13.6px; }
+.h2 { color: var(--accent); font-size: 24px; font-weight: 700; }
+.h3 { color: var(--accent); font-size: 18.7px; font-weight: 700; }
+.h4 { color: var(--accent); font-size: 16px; font-weight: 700; }
+.hint-text { color: var(--accent); font-size: 16px; }
+.results-lb { color: var(--accent); font-size: 16px; font-weight: 700; }
+.timer { color: #e8ecffb8; font-size: 22px; }
+.winner { color: var(--ok); font-size: 15.2px; font-weight: 700; }
+.roster-name { color: var(--ink); font-size: 15.2px; }
+.countdown { color: var(--accent); font-size: 112px; font-weight: 900; text-shadow: 0 4px 24px #00000099; }
+
+/* ------------------------------------------------------------- panels */
+.panel { background: var(--panel); border-radius: 14px; padding: 22px; box-shadow: 0 10px 40px #00000066; }
+.panel-lux { background: linear-gradient(to bottom, #1f2650, #1a2040 60%); border: 1px solid #ffd7a01a; border-radius: 14px; padding: 22px; box-shadow: 0 10px 40px #00000066; }
+.rail { background: var(--panel); border-radius: 12px; padding: 12px; }
+.rail-lux { background: linear-gradient(to bottom, #1f2650, #1a2040 60%); border: 1px solid #ffd7a01a; border-radius: 12px; padding: 12px; }
+.title-wash { background: radial-gradient(ellipse farthest-corner at 50% 45%, #0f12262e 0%, #0f1226b8 60%, #0f1226ed 100%), url("../assets/title-hall.webp") center 30% / cover; border-radius: 16px; }
+.results-art { background: url("../assets/results-lantern.webp") center / cover; border-radius: 14px; }
+.rule-card { background: var(--panel-2); border-radius: 10px; padding: 12px 14px; }
+.group { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.legend { color: var(--accent); font-size: 16px; }
+.score-row { border-bottom: 1px solid #ffffff1f; padding: 4px 8px; }
+.score-total { color: var(--accent); font-size: 16px; font-weight: 800; }
+.ach-chip { background: var(--panel-2); border-radius: 8px; padding: 6px 10px; color: var(--ink); font-size: 16px; }
+.toast { background: var(--panel-2); color: var(--ink); border: 1px solid var(--accent-2); border-radius: 10px; padding: 10px 16px; font-size: 16px; box-shadow: 0 6px 20px #00000073; }
+.tray { background: linear-gradient(to bottom, #0f122600, #0f1226 30%); }
+
+/* ------------------------------------------------------------- buttons */
+.menu-btn {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  color: var(--ink); background: var(--panel-2); border: 2px solid #00000000; border-radius: 10px; font-size: 17px; text-align: center;
+}
+.menu-btn:hover { background: var(--panel-3); }
+.menu-btn:disabled { opacity: 0.45; }
+.menu-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.menu-btn-lux {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  color: var(--ink); background: linear-gradient(to bottom, #34467c, #2b3a67); border: 2px solid #00000000; border-radius: 10px; font-size: 17px; text-align: center;
+  box-shadow: inset 0 1px 0 #ffffff1f, 0 2px 6px #0000004d;
+}
+.menu-btn-lux:hover { background: linear-gradient(to bottom, #4a5f9f, #3d5290); }
+.menu-btn-lux:disabled { opacity: 0.45; }
+.menu-btn-lux:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.primary {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  color: #0f1226; background: var(--accent-2); border: 2px solid #00000000; border-radius: 10px; font-size: 17px; font-weight: 700; text-align: center;
+}
+.primary:hover { background: #ffc97a; }
+.primary:disabled { opacity: 0.45; }
+.primary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.primary-lux {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  color: #0f1226; background: linear-gradient(to bottom, #ffc97a, #ffb454); border: 2px solid #00000000; border-radius: 10px; font-size: 17px; font-weight: 700; text-align: center;
+  box-shadow: inset 0 1px 0 #ffffff73, 0 2px 10px #ffaa464d;
+}
+.primary-lux:hover { background: #ffc97a; }
+.primary-lux:disabled { opacity: 0.45; box-shadow: none; }
+.primary-lux:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.list-btn {
+  min-height: 56px; padding: 8px; color: var(--ink); background: var(--panel-2); border: 2px solid #00000000; border-radius: 10px; font-size: 15.2px; text-align: center;
+}
+.list-btn:hover { background: var(--panel-3); }
+.list-btn:disabled { opacity: 0.4; }
+.list-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.list-done {
+  min-height: 56px; padding: 8px; color: var(--ink); background: var(--panel-2); border: 2px solid var(--ok); border-radius: 10px; font-size: 15.2px; text-align: center;
+}
+.list-done:hover { background: var(--panel-3); }
+.list-done:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.list-mastery {
+  min-height: 56px; padding: 8px; color: var(--ink); background: var(--panel-2); border: 2px solid var(--accent-2); border-radius: 10px; font-size: 15.2px; text-align: center;
+}
+.list-mastery:hover { background: var(--panel-3); }
+.list-mastery:disabled { opacity: 0.4; }
+.list-mastery:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.kbd { background: #ffffff1f; border-radius: 4px; padding: 0 5px; font-size: 13.6px; color: var(--ink); }

@@ -1,6 +1,6 @@
-// Localized strings for the StarHermit account controls (sign-in, invite,
-// player chip). Same nine locales and picker as the Graphics panel.
-import { pickLocale } from './gfx-strings.js';
+// Localized strings for the StarHermit account lines (sign-in, invite, the
+// player line, the signed-out toast, the leaderboard line), in the nine
+// locales; the game passes its interface language.
 
 const en = {
   signIn: 'Sign in with StarHermit',
@@ -132,6 +132,23 @@ export const SH_STRINGS = {
     lbNotPosted: 'Punteggio non inviato alla classifica.',
   },
 };
+
+const LANG_DEFAULT = { en: 'en-US', es: 'es-419', de: 'de-DE', fr: 'fr-FR', pt: 'pt-BR', it: 'it-IT' };
+
+/** The catalogue nearest the given language tags. */
+export function pickLocale(langs) {
+  for (const raw of langs || []) {
+    const tag = String(raw || '');
+    const exact = Object.keys(SH_STRINGS).find((k) => k.toLowerCase() === tag.toLowerCase());
+    if (exact) return exact;
+    const lang = tag.split('-')[0].toLowerCase();
+    if (lang === 'en' && /-(gb|uk|ie|au|nz)$/i.test(tag)) return 'en-GB';
+    if (lang === 'es' && /-es$/i.test(tag)) return 'es-ES';
+    if (lang === 'fr' && /-ca$/i.test(tag)) return 'fr-CA';
+    if (LANG_DEFAULT[lang]) return LANG_DEFAULT[lang];
+  }
+  return 'en-US';
+}
 
 export function shStrings(langs) {
   return SH_STRINGS[pickLocale(langs)] || en;

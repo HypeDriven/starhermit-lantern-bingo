@@ -1,20 +1,21 @@
 {
   "name": "lantern-bingo",
   "version": "1.0.0",
-  "description": "Lantern Bingo — shared-call number game in a lantern hall.",
+  "private": true,
+  "description": "Lantern Bingo — shared-call number game in a lantern hall, on the StarHermit engine (script game): deterministic rules, starhermit:scene hall, starhermit:ui card and menus, server-refereed hosted halls.",
   "type": "module",
   "scripts": {
-    "test": "node --test 'tests/*.test.js' tests/i18n.test.mjs",
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node --test tests/rules.test.js tests/session.test.js tests/save.test.mjs tests/server.test.mjs tests/hosted.test.mjs tests/jint.test.mjs tests/i18n.test.mjs && node tests/validate-content.js",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
     "validate": "node tests/validate-content.js",
-    "start": "node server.js",
-    "test:e2e": "node tests/e2e.mjs"
+    "server": "node tools/build-server.mjs",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "plays": "node tools/gen-plays.mjs"
   },
-  "keywords": [],
-  "author": "",
   "license": "SEE LICENSE IN LICENSE.md",
-  "dependencies": {
-    "three": "^0.185.1"
-  },
   "devDependencies": {
     "playwright-core": "^1.62.1"
   }

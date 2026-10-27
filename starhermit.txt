@@ -1,13 +1,25 @@
 name=Lantern Bingo
 description=Mark called numbers on your bingo card and claim the target pattern before your rivals.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
-server=score-script.js
+server=server.js
 cover=cover.jpg
-control.left=ArrowLeft | Move left
-control.right=ArrowRight | Move right
-control.up=ArrowUp | Move up
-control.down=ArrowDown | Move down
+
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.17.1
+engine.minor=19
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard controls (players rebind keys and pads in the runtime's Options).
+# The arrow keys and the D-pad move between the card's cells (the UI's own
+# focus); the card is also played with the pointer or touch: tap a cell (or
+# its tile in the 3D hall) and the tray's buttons.
 control.mark=Enter | Mark cell
 control.call=Space | Call number
 control.claim=KeyC | Claim
@@ -16,3 +28,18 @@ control.hint=KeyH | Hint
 control.pause=KeyP | Pause
 control.camera=KeyR | Reset camera
 control.back=Escape | Back
+engine.group.mark=Card
+engine.group.undo=Assists
+engine.group.pause=Round
+
+# Gamepad defaults: South marks the focused cell (and presses buttons), West
+# calls, North claims, the shoulders undo and hint, Start pauses, East goes
+# back, the right stick's press resets the camera.
+engine.gamepad.mark=South
+engine.gamepad.call=West
+engine.gamepad.claim=North
+engine.gamepad.undo=LeftShoulder
+engine.gamepad.hint=RightShoulder
+engine.gamepad.pause=Start
+engine.gamepad.camera=RightStickPress
+engine.gamepad.back=East

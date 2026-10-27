@@ -1,0 +1,35 @@
+# Quick Play (Practice, Normal): a manual call (Space), a hint (H), a mark on an uncalled number
+# (refused, −25) undone (U), a false claim refused, the pause dialog's Help and back, then Leave round.
+until 300 Lantern Bingo
+frames 60
+click =Play
+until 60 Unranked practice
+frames 10
+click =Start
+until 300 Round active
+frames 10
+key Space 1
+frames 10
+expect Calls: 1
+key KeyH 1
+frames 10
+save practice-hint
+click row 1 column 1, number
+frames 10
+expect has not been called yet
+save practice-invalid
+key KeyU 1
+frames 10
+expect invalid −0
+key KeyP 1
+until 60 Take your time
+frames 10
+click =Help
+until 60 Fair play
+frames 10
+click =Back
+until 60 Take your time
+frames 10
+click =Leave round
+until 60 =Play
+frames 10

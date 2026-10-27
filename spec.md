@@ -12,43 +12,35 @@ pattern close, and slam CLAIM before the other lanterns do.
 
 | | |
 |---|---|
-| Genre | Shared-call number game (75-ball bingo family) with seeded solo/bot rounds and an authoritative hosted room |
-| Players | 1 human vs 0–4 deterministic bot "lanterns" offline; up to 4 seats + spectators in a hosted room |
+| Genre | Shared-call number game (75-ball bingo family) with seeded solo/bot rounds and server-refereed hosted halls |
+| Players | 1 human vs 0–4 deterministic bot "lanterns" offline; up to 4 players (empty seats bot lanterns) in a hosted hall |
 | Session | 3–9 minutes per round (`expectedMinutes` on every content item); a Journey sitting is 2–4 rounds |
-| Platforms | Desktop and mobile browsers, portrait and landscape; no install, no build step |
-| Rendering | A three.js hall (`js/three.module.js`, r185, vendored) as decorative depth **behind** a DOM `<button>` grid that is the authoritative interaction surface. The game is fully playable with WebGL absent. |
-| Persistence | `localStorage['lantern-bingo-v1']`, FNV-1a checksummed (offline cache); hosted mode mirrors the same doc to the StarHermit cloud-save slot |
+| Platforms | A StarHermit engine script game (engine 1.17.1, host API 1.19): natively in the StarHermit client and in desktop and mobile browsers through the engine's web runtime (`index.html` is the engine's loader) |
+| Rendering | `starhermit:ui` card, menus and HUD over a `starhermit:scene` lantern hall that shows under the card on tall desktop windows. The card is the game; the hall is scenery. |
+| Persistence | The game's save (`starhermit:storage` `saves`) on the device and, signed in, in the account's cloud slot; the game's options as synced settings |
 
 ### File map
 
 | Path | Owns |
 |---|---|
-| `index.html` | Eight `<section class="screen">` panels, the action tray, the `<dialog>` modal, and the three live regions (`#live-status`, `#live-alert`, `#captions`). |
-| `css/style.css` | Palette tokens, responsive grid at three breakpoints, safe-area insets, accessibility body classes, title/results key art. |
-| `js/rules.js` | Pure rules engine: card generation, `PATTERNS`, `legalActions`, `applyCommand`, `scoreBreakdown`, `compareResults`, `serialize`/`deserialize`/`hashState`. No DOM, no `Date`, no `Math.random`. |
-| `js/session.js` | `Session` — the only mutable holder of rules state; command log, undo snapshots, replay envelope + `verifyReplay`, `botCommands`. |
-| `js/content.js` | `THEMES`, `LESSONS`, 40 `JOURNEY_STAGES`, 4 `CHALLENGES`, `dailyFor(dateISO)`, and the offline `validateContent` simulator. |
-| `js/audio.js` | `AudioEngine`: four gain buses, sampled-clip loader over `sfx/manifest.json`, seeded synth fallback per event, caption emission. |
-| `js/gfx.js` | Pure graphics quality model: presets, categories, per-preset budgets (`BUDGETS`, `budget()`), hardware level → preset (`LEVELS`, `detectLevel()`, `presetForLevel()`, `detectPreset()`), `resolve()`, `presetTier()`, `choosePreset()`, `describe()`. |
-| `js/gpu-level.js` | Shared StarHermit hardware-level detector (`window.StarHermitGpu`; copy of the canonical tools file, not edited here). |
-| `js/i18n.js`, `js/locales/` | Localization core (`T`, `N`, `setLocale`, `onLanguage`, `applyMarkup`) and the per-locale catalogues keyed by the US-English text. |
-| `sh-language.js` | Shared StarHermit language preference (`window.StarHermitLanguage`), an unmodified copy of `tools/sh-language.js`, loaded before the SDK. |
-| `game-options.js` | Shared frame-rate / Language / Sound / Report-a-problem sections, an unmodified copy of `tools/game-options.js`. |
-| `js/save-merge.js` | `mergeSaves(remote, local, defaults)` — the cloud-save conflict merge. |
-| `js/gfx-strings.js` | Graphics-section strings in the nine locales and `pickLocale()`; the game passes its current language. |
-| `js/hall-post.js` | Loaded on demand: EffectComposer chain (GTAO, UnrealBloom, grade + vignette, SMAA/FXAA) and the RoomEnvironment PMREM map. |
-| `js/title-fx.js` | `TitleFx`: 2D-canvas sky lanterns drifting behind the main menu. |
-| `js/vendor/three/addons/` | three r185 addons (postprocessing, shaders, RoomEnvironment), resolved through the `index.html` importmap. |
-| `js/game.js` | Everything the player touches: `HallRenderer`, graphics runtime (GPU probe, adaptive scale, FPS meter, Graphics panel), screen state machine, card DOM, call loop, bots, results, settings, hosted hall client (rooms + legacy dev `/ws`), keyboard. |
-| `starhermit-sdk.js` | Shared StarHermit client (unmodified copy): launch token, renewal, sign-in, profile, cloud save, settings, controls, invite link. |
-| `js/platform.js` | Adapter over the SDK: hosted flag, nickname, cloud-save mirror + sync status, settings-KV mirroring, key bindings, sign-in/invite, Bearer fetch for the rooms lobby. No-op without a token. |
-| `js/sh-strings.js` | Account-control strings (incl. the session-expired and terms dialogs) in the nine locales, following the game language. |
-| `js/hallnet.js` | Realtime-rooms hall: REST lobby (quick-join/create/open/leave/result/mine), binary frame codec (server-stamped 16-byte sender prefix), guest throttles, and `HallHost` — the host-side caller/rounds runner. |
-| `score-script.js` | StarHermit platform script (`server=score-script.js`): range-checks a finished solo round's total and posts it to the `high-score` leaderboard (canonical copy in the games repo's `tools/score-script.js`). |
-| `server.js` | Local dev host: static files, a dev-only `/api/v1/time` clock probe, and a dependency-free RFC6455 WebSocket hall for local play (no token). |
-| `sfx/` | 18 Opus one-shots + `manifest.txt` (canonical) / `manifest.json` (loader + generator input) / `manifest.md`. |
-| `assets/` | `title-hall.webp`, `results-lantern.webp` key art. |
-| `tests/` | `rules.test.js`, `session.test.js`, `platform.test.js`, `hallnet.test.js`, `gfx.test.js` (hardware level → preset: SwiftShader / llvmpipe / no WebGL / `Radeon Graphics` / UHD → Low, Iris Xe → Balanced, GTX 1070 → High, RTX 4080 / 5090 → Ultra, phones and tablets Balanced at most; the per-preset budget table and its level scaling), `i18n.test.mjs` (every key in all nine locales; keys from `i18n-keys.mjs`) (`npm test`), `e2e.mjs` (real-UI playthrough incl. Auto detecting Low with the summary naming Level 0 on the software GPU, Graphics presets/override/persistence at desktop + mobile and a tall-desktop 3D hall pass under Ultra and Low), `hosted-smoke.mjs` (token + mock platform in Chrome), `hall-rooms-smoke.mjs` (mock realtime platform, host+guest), `validate-content.js`, `gfx-bench.mjs` (dev-only hook for `tools/gfx-bench.mjs`), plus older smoke harnesses. |
+| `starhermit.txt` | Manifest: `engine.version=1.17.1`, `engine.minor=19`, entry `native/main.ts`, capabilities platform/storage/clipboard, `server=server.js`, the `control.*` keys and `engine.gamepad.*` defaults. |
+| `native/main.ts` | Entry: lifecycle (start, suspend/resume, quit), actions from keys and pads, clicks and taps on the 3D tiles, the fixed-step clock, the per-frame look. |
+| `native/app.ts` | The controller (what the browser build's `js/game.js` did without the DOM): screen flow, the caller, the bots, marks/claims/hint/undo, lessons, results, achievements, progress, leaderboard posting, Copy Replay, Hosted Play. |
+| `native/screens.ts` | Every screen, the HUD, dialogs and the toast as immediate-mode `starhermit:ui`; the card cells and call chip drawn with `starhermit:draw`; the title's drifting sky lanterns. |
+| `native/render.ts` | The 3D hall (`starhermit:scene`): ball and pole, tiles, lanterns, floor, board, motes, lights, post effects, tile picking. |
+| `native/quality.ts` | The four looks and per-tier budgets keyed by the runtime's graphics tier. |
+| `native/audio.ts` | Clip one-shots per event (seeded variant), captions, the rendered ambience loop. |
+| `native/platform.ts` | Save and foreign-save migration, the game's options and legacy-settings migration, player/invite/clock, score posting, the rooms adapter for hosted halls. |
+| `native/i18n.ts`, `native/style.ts` | The runtime's language → the shipped locale; the converted style sheet, theme and high-contrast tokens. |
+| `js/rules.js`, `js/session.js`, `js/content.js` | Pure rules, the session (log, undo, replay envelope, `verifyReplay`), content (themes, lessons, 40 Journey stages, challenges, `dailyFor`, validator). Unchanged from the browser build. |
+| `js/hosted.js` | `HallClient`: the hosted hall's lobby (a realtime room) and its bound session's game socket. |
+| `js/progress.js`, `js/save-merge.js` | The save document, its normalization and merge, reading the old cloud save, the game's options' checks. |
+| `js/i18n.js`, `js/locales/`, `js/sh-strings.js` | `T`/`N` and the nine locales keyed by the US-English text; the account strings. |
+| `server.js` | The server script: hosted-hall referee and solo score posting (§12). Its RULES block is written from `js/rules.js` + `js/content.js` by `tools/build-server.mjs`. |
+| `assets/ui-style.json` | `tools/ui-style.css` converted with `starhermit css` (`npm run css`). |
+| `assets/`, `sfx/`, `cover.jpg`, `icon.png` | Key art, 18 Opus one-shots + `manifest.json`, cover and icon. |
+| `index.html`, `starhermit-files.json` | The engine's web loader and file index (`npm run package`; never edited by hand). |
+| `tests/`, `tools/` | §14. Left out of the package (`.starhermitignore`). |
 
 ---
 
@@ -62,7 +54,7 @@ information, catch-up handicaps, anything that makes a call mean something diffe
 
 **2. The dab is the verb.**
 Marking is the only thing you do constantly, so it gets the best feedback in the game: an ink-stamp
-sample, an amber cell flip, a 3D tile lighting, and an `aria-pressed` change. *Rules in:* one tap =
+sample, an amber cell flip, a 3D tile lighting, and the cell's screen-reader name turning to "…, marked". *Rules in:* one tap =
 one mark, no drag-select, no auto-dab. *Rules out:* a "mark all" button — the game is about
 noticing, and automating the noticing removes the game.
 
@@ -78,10 +70,10 @@ Seed, command log and periodic state hashes are recorded for every round and exp
 everywhere, integer scores, `Session.verifyReplay`. *Rules out:* wall-clock in rules, unseeded
 `Math.random` in a round (it only picks a *fresh* practice seed), server-trusted client scores.
 
-**5. WebGL is scenery, not the game.**
-The lantern hall is atmosphere; the DOM grid is the game. *Rules in:* a `try/catch` around
-`WebGLRenderer`, a context-lost message, a Low preset down to 12 lanterns at DPR 1 with no post-processing. *Rules out:*
-any rule, hint or affordance that exists only in the 3D scene.
+**5. The 3D hall is scenery, not the game.**
+The lantern hall is atmosphere; the UI card is the game. *Rules in:* the hall shows only where there is room
+(tall desktop windows), a Low look down to 12 lanterns with no post effects. *Rules out:* any rule, hint or
+affordance that exists only in the 3D scene.
 
 ---
 
@@ -188,7 +180,7 @@ active with no legal `call` left, and the player leaves via Pause → Leave roun
 All randomness is `mulberry32`. `Session.snapshots` stores a serialized state before every
 state-changing command; `undo()` restores it, pops the command, and drops hash checkpoints past the
 restored tick so an exported replay still verifies. The Undo button is shown only in `practice` and
-`learn` modes (`js/game.js`, `startRound`). `Hint` (`#btn-hint`) reports the callable numbers, or
+`learn` modes (`native/app.ts` `undoShown`). `Hint` reports the callable numbers, or
 "Pattern complete — press Claim!", from `legalActions` + `patternComplete`.
 
 ---
@@ -197,12 +189,12 @@ restored tick so an exported replay still verifies. The Undo button is shown onl
 
 | Mode | Entry | Content | Ranked | Undo | Caller |
 |---|---|---|---|---|---|
-| Practice / **Play** | `data-nav="play-quick"` (Normal) or the Practice picker | `practiceStage(easy\|normal\|hard)`, fresh random seed | no | yes | local, `callSpeed` |
+| Practice / **Play** | **Play** on the title (Normal) or the Practice picker | `practiceStage(easy\|normal\|hard)`, fresh random seed | no | yes | local, `callSpeed` |
 | Learn | Learn list | 3 `LESSONS`, 0 bots, manual calls only | no | yes | player |
 | Journey | Journey list | 40 authored stages | yes | no | local |
-| Daily | Daily button | `dailyFor(day)`, local UTC day | yes | no | local |
+| Daily | Daily button | `dailyFor(day)`, the platform's UTC day | yes | no | local |
 | Challenge | Challenge picker | 4 constrained rounds | yes | no | local |
-| Hosted | Hosted Play | realtime room (platform) or the dev server hall (local) | host-owned | no | **host client**, 4 s fixed |
+| Hosted | Hosted Play (signed in) | a realtime room, refereed by `server.js` | recorded by the server | no | **server.js**, 4 s fixed |
 
 **Practice difficulties:** easy = `any-line`, 1 bot @ 0.40 skill, par 42; normal = `two-lines`,
 2 bots @ 0.60, par 58; hard = `frame`, 3 bots @ 0.80, par 70.
@@ -217,8 +209,8 @@ stage (`buildJourneyList`), so nothing is skippable but nothing is a wall.
 **Challenges:** Speed Lantern (`any-line`, par 38, 3 bots @ 0.85), Iron Frame (`frame`, par 68),
 Steady Hand (`two-lines`, "win with zero invalid actions"), Full Glow (`full-house`, 4 bots @ 0.80).
 
-**Daily:** the date string is hashed to a seed; that seed picks pattern and theme. Identical for
-everyone on the same UTC day, immutable once published. Best score is kept per day in
+**Daily:** the date string (the platform's UTC day, `serverNow()`; the device's when offline) is hashed
+to a seed; that seed picks pattern and theme. Identical for everyone on the same UTC day, immutable once published. Best score is kept per day in
 `progress.dailyHistory` and shown in the Setup title on a repeat visit.
 
 **Unlocks and achievements.** Journey stage gating is the only content lock. Five achievements:
@@ -230,536 +222,232 @@ the results screen with the `achievement` cue.
 
 ## 6. Controls and interaction
 
-| Input | Desktop | Mobile |
-|---|---|---|
-| Mark a cell | click the grid button, or `Enter` on the focused cell, or click the 3D tile | tap the grid button or the 3D tile |
-| Move the card cursor | `←↑→↓` (wraps in both axes) | — (direct tap) |
-| Draw a number | `Space` (when a card cell is not focused) or **Call** | **Call** in the tray |
-| Claim | `C` or **Claim** | **Claim** |
-| Hint | `H` or **Hint** | **Hint** |
-| Undo | `U` or **Undo** (practice/learn only) | **Undo** |
-| Pause | `P` / `Esc` or **Pause** | **Pause** |
-| Reset 3D camera | `R` | — |
-| Back / close | `Esc` | Back / Done buttons |
+| Input | Keyboard (default, rebindable) | Gamepad (default) | Pointer / touch |
+|---|---|---|---|
+| Move between cells | Arrow keys (the UI's focus over the card grid; no wrap) | D-pad / left stick | — |
+| Mark a cell | `Enter` (`mark`) or `Space` on the focused cell; `Enter` with nothing focused focuses the card | South on the focused cell | tap/click the cell, or its tile in the 3D hall |
+| Draw a number | `Space` (`call`) when no widget has focus, or **Call** | West | **Call** |
+| Claim | `C` (`claim`) or **Claim** | North | **Claim** |
+| Hint | `H` (`hint`) | Right shoulder | **Hint** |
+| Undo (practice/learn) | `U` (`undo`) | Left shoulder | **Undo** |
+| Pause | `P` (`pause`) or `Esc` (`back`) during a round | Start / East | **Pause** |
+| Reset 3D camera | `R` (`camera`) | Right stick press | — |
+| Back / close | `Esc` (`back`): sub-screens go back (Settings and Help to the pause dialog when opened from it); on the pause dialog resumes | East | Back / Done |
 
-`Space` is context-sensitive: with a card cell focused it marks, otherwise it calls, so keyboard
-players never have to leave the grid. Every `keydown` handled on the play screen calls
-`preventDefault()` for arrows, `Enter` and `Space` so the page never scrolls under the card.
+The runtime owns rebinding (Settings → **Change keys and buttons** opens it), F1 and its Options. Tray buttons show
+their key (`bindingLabel`). Touch needs no on-screen controls: the card and tray are buttons.
 
-**Input locking.** Marks are ignored unless `gamePhase === 'active'`, which covers boot, countdown,
-pause, resolution and results. A short dedupe key (`mark-<cell>-<tick>`, cleared after 400 ms)
-absorbs double-fire from touch and pointer events. `Claim` is `disabled` until the pattern is
-actually complete. In hosted rounds `Call` is disabled (the server is the caller) and a spectator's
-marks are answered with an on-screen explanation instead of a command.
+**Input locking.** Marks are ignored unless the phase is `active` and no dialog is open. A short dedupe
+(the same cell on the same tick within 400 ms) absorbs double presses. `Claim` is disabled until the
+pattern is complete. In hosted rounds `Call` is disabled (the server is the caller).
 
-**Feedback for every input.** Marks: cell flips amber with a ring, 3D tile lights, `mark` sample,
-`aria-pressed` update. Rejections: `invalid` sample plus a plain-language line in `#hint-text`
-("Number 47 has not been called yet.") that is also announced. Calls: ball texture repaints, pops
-(unless reduced motion), `call` sample, `#call-display` updates, "Called 47" announced. Buttons:
-`ui` sample on press.
-
----
+**Feedback for every input.** Marks: the cell turns amber with a ring, the 3D tile lights, the `mark`
+sample, the screen-reader name changes. Rejections: the `invalid` sample plus a plain-language line
+under the card ("Number 47 has not been called yet."), also announced. Calls: the chip and the ball
+repaint, the ball pops (unless reduced motion), the `call` sample, "Called 47" announced. Buttons: the
+`ui` sample.
 
 ## 7. Screens and UI flow
 
 ```
-boot ─► title ─┬─► setup ─► play ─► results ─┬─► title
-               │            ▲   │            └─► setup (next Journey stage)
-               │            └ pause modal
-               ├─► journey / learn ─► setup
-               ├─► settings ─► title | pause
-               ├─► help ─► title | pause
-               └─► hosted ─► play (server-driven) ─► results
+title ─┬─► setup ─► play (countdown 3-2-1-Go) ─► results ─┬─► title
+       │             ▲   │                                └─► setup (next Journey stage) / Journey list
+       │             └ pause dialog (Resume / Settings / Help / Leave round)
+       ├─► journey / learn lists ─► setup / lesson
+       ├─► Practice / Challenge pickers (dialogs) ─► setup
+       ├─► settings, help (back to the title or the pause dialog)
+       └─► hosted hall lobby ─► play (server-driven) ─► results
 ```
 
-`showScreen(name)` hides all eight sections and focuses the first button in the new one.
-`gamePhase` runs `boot → title → preparing → countdown → active ↔ paused → resolving → results`
-and is mirrored verbatim into `#live-status`, which is also what the e2e test synchronizes on.
-Pause opens the `<dialog>` with Resume / Settings / Help / Leave round; Settings and Help opened
-from pause return to the pause modal rather than the title, so a paused round is never lost.
+A top bar shows on every screen: the title, the status line (the phase in words: "Main menu", "Get
+ready…", "Round active — Two Lines", "Paused", …) and the audio caption line (`♪ number called`).
 
-**Desktop (≥1024 px).** Three-column play grid: objective rail (target, description, calls/lines/
-marks, running score) | playfield (3D hall, call banner, 5×5 card, hint line) | roster rail. The
-card is capped at `min(480px, 100vh − 300px)`; the hall is shown only on viewports taller than
-900 px and takes the height left under the card (4:3, at most 640 px wide), so the tray always stays
-on screen. The pause dialog is centred, and the results Retry / Copy Replay / Continue row is
-`position: sticky` at the bottom, so it stays visible when the breakdown runs past the fold.
+**Layouts** (the old media queries, picked from the window's logical size):
+- **Wide** (≥ 1024 wide, taller than 500 and not a short landscape): objective rail | call chip, card,
+  hint line | Hall roster rail; the tray along the bottom. The card is at most min(480, height − 300).
+  Taller than 900: the 3D hall shows under the hint line, 4:3, at most 640 wide, with 14 px rounded corners.
+- **Stacked** (narrower portrait windows): the objective rail condensed above, the roster condensed
+  below the card, the tray pinned at the bottom over a gradient (phones).
+- **Short landscape** (≤ 500 tall, or landscape under 1024 × 720): narrow rails (120–170) beside the
+  card, cells down to 36 px, no game title during play; the title menu lays its nine buttons out 3×3.
 
-**Large screens (above 1600×1000).** `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000)`,
-capped at 2.5) and `body` is CSS-`zoom`ed by it, so the whole page (dialog, toast and fps meter
-included) renders as the ~1600–1778×1000 layout magnified; every vw/vh length is divided by
-`--ui-scale` and the 3D hall multiplies its pixel ratio by `UIScale.value`.
-
-**Tablet / small desktop (<1024 px).** The play grid collapses to one column; the roster rail moves
-below the playfield (`order: 3`) so the card stays in the upper half of the screen.
-
-**Portrait mobile (≤640 px).** The hall goes 1:1, and the action tray becomes `position: sticky`
-at the bottom over a gradient so Call/Claim are always reachable with a thumb.
-
-**Landscape mobile (≤500 px tall).** Rails narrow to 120–170 px, the hall is capped at 40vw, cell
-type shrinks, the title drops to 20 px (and is hidden during play, leaving the status and caption
-lines), the play column gaps tighten to 4 px, and the results key art is hidden — the card and the
-tray fit a 390 px-tall screen without scrolling. The main menu lays its nine buttons out in a
-3×3 grid under a smaller lantern, so the whole title screen fits 390 px too. Every screen change
-resets the page scroll, so Settings, Help and the other screens open at their top.
-
-**Toast.** The account toast (`#sh-toast`) sits at the top edge over the topbar, so it never covers
-the play tray or the results actions.
-
-**Safe areas.** `viewport-fit=cover` plus `--sat-*` tokens from `env(safe-area-inset-*)` pad the
-topbar, main, tray and modal. **Never cut off:** the 5×5 card, the Call/Claim buttons, the call
-display, and `#live-status`.
-
----
+Pages taller than the window scroll (results keep Retry / Copy Replay / Continue pinned below the
+scroll). Larger UI and text sizes from the runtime scale everything (`ui.preferences()`).
 
 ## 8. Art direction
 
-**Palette** (`css/style.css` `:root`, `content.js THEMES`):
+**Palette** (`tools/ui-style.css` tokens, `content.js THEMES`): page `#0f1226`, ink `#e8ecff`, accent
+`#ffd7a0`, lantern amber `#ffb454`, panels `#1a2040` / `#2b3a67` / `#3d5290`, ok `#8be09b`, danger
+`#ff7a7a`. The runtime's high contrast swaps in black panels, white ink and a gold accent and drops the
+key art. Five 3D themes tint background, lanterns, floor and fill: Ember Court, Jade Garden, River Night,
+Plum Festival, Paper Dawn.
 
-| Token | Value | Use |
-|---|---|---|
-| page | `#0f1226` | night ground behind everything |
-| `--ink` | `#e8ecff` | body text |
-| `--accent` | `#ffd7a0` | headings, focus ring, hint text |
-| `--accent-2` | `#ffb454` | lantern amber: primary buttons, marked cells, the call ball |
-| `--panel` / `--panel-2` / `--panel-3` | `#1a2040` / `#2b3a67` / `#3d5290` | panel, control, hover |
-| `--ok` / `--danger` | `#8be09b` / `#ff7a7a` | winner row / errors |
-| High contrast | `#000` panels, `#fff` ink, `#ffd700` accent | body class `high-contrast` |
+**Shape and motion.** Warm circles against cool rectangles: spherical lanterns and the call ball over a
+grid of 10 px-radius tiles; marks are an amber tile plus a ring. The markable-cell outline pulses (1.2 s,
+"Hint markable cells"), the target pattern's cells carry a faint inner ring (corners, frame, diagonals),
+the call ball pops; on animated looks the hall's lanterns sway, the ball bobs, its light flickers, motes
+rise, sky lanterns drift up the title and the title lantern's glow pulses. The runtime's reduced motion
+stops all of it and shortens the countdown beats from 750 to 500 ms.
 
-Five 3D themes tint background, lantern, floor and accent: Ember Court `0xffb454`, Jade Garden
-`0x7be0a3`, River Night `0x6fb7ff`, Plum Festival `0xff8fc7`, Paper Dawn `0xfff1c9`.
+**Graphics looks** (`native/quality.ts`, keyed by the runtime's graphics tier; the runtime owns the
+level, render scale, adaptive resolution and frame-rate limit):
 
-**Shape language.** Warm circles against cool rectangles: spherical lanterns and a spherical call
-ball float over a rectilinear grid of 10 px-radius tiles. Marks are a filled amber tile plus a
-`::after` ring — a dauber dot, not a tick.
+| Tier | Shadows | AO | Bloom / grade | AA | Reflections | Hall lanterns | Motion | Detail | Materials | Floor tex | LOD | Motes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Low | off | off | off | MSAA | off | 12 | still | plain | Lambert | — | ½ | — |
+| Balanced | 512 | off | on | FXAA | RoomEnvironment | 24 | animated | detailed | Standard | 512 | ¾ | 60 |
+| High | 1024 | on | on | SMAA | on | 40 | animated | detailed | Physical (clearcoat) | 512 | 1 | 90 |
+| Ultra | 2048 | high | on | MSAA | on | 40 | animated | detailed | Physical | 1024 | 1.5 | 150 |
 
-**Typography.** One system stack (`Segoe UI`/Roboto/Arial). Everything scales with `clamp()`; card
-numbers `clamp(16px, 2.6vw, 26px)` at weight 700, the call ball 800 in a circular chip. Numbers are
-tabular in score tables.
+Motes grow up to 2× with the level inside a tier. "Detailed" is the old lit-paper/lacquer finish: the
+`-lux` button and panel classes, gradient card cells and call chip, ribbed lathe lanterns with caps, the
+textured plank floor, the lacquered board, bevelled glossy tiles, a brass pole. Bloom only takes lantern
+paper and highlights (threshold 2.0); the grade is the old GradeShader in display space with a 0.26
+vignette. Lights are three.js r185's intensities ÷ π.
 
-**Motion.** The markable-cell outline pulse (1.2 s), the call-ball scale pop on draw, and — with
-Background motion on — the lantern sway (`sin` on x and y, per-instance phase), a gentle ball bob,
-ball-light flicker, rising dust motes in the hall, drifting sky lanterns on the title and a glow
-pulse on the title lantern. All are cut by the `reduced-motion` body class **and** by
-`prefers-reduced-motion`; the countdown also shortens from
-750 ms to 500 ms per beat. Nothing motion-only carries meaning.
-
-**The hero.** The current call — the glowing ball on its pole under a point light, mirrored in the
-`#call-display` chip. Second is the card; the hall recedes behind fog from 12 to 26 units.
-
-**Graphics.** The hall renders with ACES filmic tone mapping and sRGB output, a hemisphere fill
-plus a warm key light whose PCF shadow box is fitted to the card, ball and pole, a warm point light
-on the ball and a theme-tinted fill behind the lantern rows. Optional effects: key-light shadows,
-GTAO ambient occlusion, bloom limited to lantern paper and bright highlights (luminance threshold
-2.0), a colour grade with vignette, SMAA/FXAA/MSAA anti-aliasing, RoomEnvironment image-based
-reflections, 12/24/40 hanging lanterns, background motion, and surface detail (ribbed lathe
-lanterns with caps, a textured plank floor, a lacquered clearcoat board under bevelled glossy
-tiles, a brass pole and a clearcoat banded call ball; on the DOM side a lit-paper/lacquer finish
-on card cells, the call chip, panels and buttons — paint only, never lower contrast, off under High
-contrast). The Settings **Graphics** section offers a quality preset (Auto, chosen from the
-StarHermit hardware level below; Low; Balanced; High; Ultra), a render scale (50–200%), a
-per-effect override for each category ("From preset (…)" by default; choosing a preset clears
-overrides), adaptive resolution (steps the resolution down to 60% when ~90-frame averages exceed
-26 ms and back up under 14 ms) and a frame-rate readout (bottom-left, non-interactive), plus a
-summary "GPU · Level N · cost · W×H px" (the level label localized). Changes apply immediately (no reload; canvas MSAA changes swap the
-WebGL renderer, keeping the scene) and persist in `store.data.settings.graphics` (cloud-mirrored
-with the other settings). If the post-processing addons or chain fail, the hall renders without
-them and the panel says so. The current preset is exposed as `body[data-gfx-preset]`.
-
-**Hardware level and Auto.** `js/gpu-level.js` (the shared StarHermit detector,
-`window.StarHermitGpu`, loaded as a classic script before `js/game.js`) rates the GPU 0–20 (0 =
-Galaxy S20 / Intel UHD or weaker, 20 = RTX 5090, each level ≈ 1.23× the one below; laptop parts two
-levels lower; phones, tablets and ≤ 4 GB machines capped at 9; software renderers and browsers
-without WebGL 0). Auto picks **Low from 0, Balanced from 4, High from 10, Ultra from 17**, so
-strong desktop GPUs get Ultra; adaptive resolution still steps down when frames are slow. On
-phones and tablets the shared frame-rate option paces Auto at half the display refresh rate and
-starts at 16 simultaneous sounds.
-
-**Per-preset budgets** (`BUDGETS` in `js/gfx.js`; each tuned to hold 60 FPS on the weakest GPU Auto
-gives it — Low: level 0 phones / Intel UHD, Balanced: level 4 Iris Xe, High: level 10 GTX 1070,
-Ultra: level 17 RTX 4080). Gameplay is identical on every preset.
-
-| Preset | Hall materials (tiles, board, ball, pole, floor, lanterns) | Floor texture | Geometry LOD | Dust motes | Title sky lanterns | Bloom / GTAO resolution |
-|---|---|---|---|---|---|---|
-| Low | Lambert | 256 px | ½ | 30 | 0.75× | ½ / ½ |
-| Balanced | Standard | 512 px | ¾ | 60 | 1× | ½ / ½ |
-| High | Physical (clearcoat tiles, board, ball) | 512 px | 1 | 90 | 1× | ½ / ½ |
-| Ultra | Physical (clearcoat tiles, board, ball) | 1024 px | 1.5 | 150 | 1.25× | full / full |
-
-Geometry LOD multiplies the segments of the floor disc, call ball, pole, lantern lathe, spheres
-and caps, and the tile bevel/curve segments. Motes scale within the preset by the hardware level
-(`StarHermitGpu.scaleBudget`, ≤ 2×; fewer below the floor). Materials, geometry, the floor texture,
-motes and lanterns are rebuilt when the preset changes (cell colours are kept). Bloom and GTAO run
-at a fraction of the frame through a wrapped pass `setSize`. The hall is collapsed on compact
-(phone) layouts, so phones render only the DOM card and the 2D title lanterns.
-
-**60 FPS benchmark** (`node tools/gfx-bench.mjs lantern-bingo [--mobile --presets low,balanced]`,
-dev-only, real GPUs; hook `tests/gfx-bench.mjs` picks the preset in Settings → Graphics, starts a
-Quick Play round and keeps marking callable cells, calling and claiming through the visible card,
-starting a new round after results). Measured 2026-10-17 (an AMD Radeon iGPU at level 2 projected
-to each preset's floor level, the same page with draws skipped subtracted; typical p50 ≤ 12 ms and
-slow p90 ≤ 14 ms, CPU p90 ≤ 6 ms on the NVIDIA run):
-
-- Desktop 1920×1080: PASS low (typical 0.00, slow 0.00 ms at level 0; CPU 0.50 ms); PASS
-  balanced (typical 0.29, slow 0.51 ms at level 4; CPU 1.10 ms); PASS high (typical 0.07, slow
-  0.20 ms at level 10; CPU 1.80 ms); PASS ultra (typical 0.03, slow 0.00 ms at level 17; CPU
-  1.20 ms).
-- Mobile 390×844 @3×: PASS low (typical 0.00, slow 0.00 ms at level 0; CPU 0.20 ms); PASS
-  balanced (typical 0.03, slow 0.00 ms at level 4; CPU 0.20 ms).
-
-**Visual assets the design calls for.** (1) A title backdrop that says "festival hall at night"
-before any text is read, dark enough in the centre for a menu column to sit on it. (2) A results
-banner that reframes the round as a small ceremony. Both ship — see §15.
-
----
+**Key art.** `assets/title-hall.webp` behind the title under a radial scrim; `assets/results-lantern.webp`
+as the results banner (hidden on short landscape and under high contrast).
 
 ## 9. Audio direction
 
-**Mix philosophy.** The hall is quiet so the call can be loud. Ambience is a two-oscillator drone
-(110 Hz + 165 Hz at 0.05 gain) that never competes; calls sit on their own `voice` bus so a player
-who only wants to hear numbers can drop everything else to zero.
-
-**Buses** (`AudioEngine.buses`, defaults): `music` 0.5, `effects` 0.8, `ambience` 0.4, `voice` 0.7,
-each a `GainNode` into a master gain. Mute zeroes all four without losing the slider values.
-
-**Sampling and fallback.** After the first pointer gesture unlocks the `AudioContext`, the engine
-fetches `sfx/manifest.json` and lazily decodes clips on first use. Each event id maps to two
-variants chosen by a seeded RNG; a failed fetch or a not-yet-decoded buffer falls through to the
-original synthesized transient, so the game is never silent. Sampled playback emits the same caption
-as its synth twin.
-
-### SFX event table — the source for `sfx/manifest.txt`
-
-| Event id | Files | Description | Fires when |
-|---|---|---|---|
-| `ui` | `ui-lantern-tap`, `ui-menu-select` | papery lantern tap / clave + brass ping | any menu, tray or modal button press |
-| `call` | `call-ball-draw`, `call-number-chime` | ball down a bamboo chute / two singing-bowl notes | `doCall()`, or a hosted snapshot whose `currentCall` changed |
-| `mark` | `mark-paper-stamp`, `mark-ink-dab` | rubber stamp on card / dauber dot | a legal mark lands |
-| `invalid` | `invalid-wood-thud`, `invalid-brush-scratch` | dull table knock / dry brush scratch | uncalled number, already marked, false claim, server rejection |
-| `line` | `line-lantern-glow`, `line-chime-rise` | lantern flaring up / three glass chimes | a `lines` event names the local player |
-| `win` | `win-festival-fanfare`, `win-bingo-bells` | temple bells + flute / hand-bell cascade | the local player claims first |
-| `lose` | `lose-paper-sigh`, `lose-ember-fade` | paper sigh / ember pop into a fading gong | another lantern claims first |
-| `tick` | `tick-clock-tap`, `tick-wood-tick` | escapement tick / bamboo on wood block | each "3", "2", "1" countdown beat |
-| `go` | `start-gong-swell` | warm gong swell blooming into shimmer | the final "Go" beat as the round opens |
-| `achievement` | `achieve-bell-bloom` | two hand bells with a glittering tail | 450 ms into results when a badge unlocked |
-
-**Captions.** Every event writes a short caption into `#captions` (`♪ marked`, `♪ number called`,
-`♪ bingo! round won`, `♪ round begins`, `♪ achievement unlocked`), so the audio layer is fully
-readable with sound off.
-
----
+Each event plays one of its two authored one-shots (`sfx/manifest.json`, variant from a seeded RNG):
+`ui`, `call`, `mark`, `invalid`, `line`, `win`, `lose`, `tick`, `go`, `achievement` (the event table and
+sources are in `sfx/manifest.md`). Under the game a quiet lantern hum (110 + 165 Hz sines at 0.05) loops
+from the first press. Menu taps play on the runtime's interface bus, everything else on effects; Options
+› Audio owns volumes, mute and the voice limit. Clips load one at a time once the mixer runs; a clip still
+loading is silent. **Captions:** every event writes its line (`♪ marked`, `♪ number called`, `♪ bingo!
+round won`, …) under the status line, so the audio reads with sound off.
 
 ## 10. Localization
 
-The product requires en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT.
-Every player-facing string is localized: static markup carries `data-i18n` / `data-i18n-aria`
-(the Help cards with inline `<kbd>` use `data-i18n-html`, keyed by their authored markup), and
-code calls `T('<US-English text>', vars)` from `js/i18n.js`. Catalogues in `js/locales/` are keyed by
-the US-English text (en-US is the identity, en-GB has no spelling differences today, es-ES and
-fr-CA list their differences from es-419 and fr-FR). Content stays English data — pattern names
-and descriptions (`rules.js`), lessons, challenges, themes, achievements, audio captions — and
-translates at display time; stage titles are composed from their number. Rule refusal codes
-(`already-marked`, `number-not-called`, `spectating`, …) map to localized sentences. The status
-line names the phase in words; the raw phase is on `#live-status[data-phase]`.
-
-- Settings → Graphics → **Language → Game language** (rendered by `game-options.js` from the
-  `sh-language.js` instance) offers **Automatic — <resolved language>** plus the nine locales by
-  native name and a status line (Saved to account / Saved on this device / Account sync
-  unavailable). It is reachable from the title and from the pause dialog mid-round.
-- A change applies immediately without restarting the round or touching the hall socket:
-  markup is re-applied, `<html lang>` updates, and `relocalize()` re-renders key hints, every
-  remembered status/hint/caption line, the Graphics controls (rebuilt inside `#gfx-controls` only,
-  so the shared sections stay), title progress and account line, the open Journey/Learn list or
-  Setup screen, the round's objective, progress, roster and card labels, the results panel and an
-  open dialog (pause, practice, challenge, reset, session-expired, terms).
-- Resolution (`sh-language.js`): explicit game choice → for Automatic, the StarHermit account's
-  `preferredLanguage` (`GET /api/v1/me/language`, signed in only) → `navigator.languages` → en-US.
-  The choice is stored per player in `localStorage['lantern-bingo.language.<user|guest>']` and,
-  signed in, in the per-player settings key `ui.language` as `{ choice }`; the game's settings
-  mirror only adopts and patches its own keys. `?lang=` forces a locale for the page load (QA).
-- Layout: settings fieldsets never exceed the screen at 390 px; long German labels wrap and
-  selects shrink with an ellipsis.
-
----
+Every player-facing string is localized in en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and
+it-IT: code calls `T('<US-English text>', vars)` (`js/i18n.js`, catalogues in `js/locales/` keyed by the
+English text; es-ES and fr-CA list their differences). The language is the runtime's interface language
+(Options › Language, else the account's or the device's), mapped to the nearest shipped locale, and a
+change shows on the next frame. Content names (patterns, lessons, challenges, themes, achievements,
+captions) stay English data and translate where shown; rule refusal codes map to sentences.
 
 ## 11. Accessibility
 
-- **Keyboard-only path.** Complete: `showScreen` focuses the first button of each screen; the card
-  is a roving-tabindex grid (`ArrowKeys` + `Enter`); all round actions have single-key bindings; the
-  pause dialog is a native `<dialog>` with focus moved to its first action and restored to the
-  previously focused element on close.
-- **Focus.** `:focus-visible` draws a 3 px `--accent` outline with 2 px offset on every interactive
-  element, over both panel and lantern-amber backgrounds.
-- **Live regions.** `#live-status` (`role="status"`, polite) carries the phase; `#live-alert`
-  (`role="alert"`, assertive, visually hidden) carries calls, rejections, hints, countdown beats and
-  the outcome, and is cleared-then-set on a frame boundary so repeated identical text re-announces.
-- **Semantics.** Card cells are `role="gridcell"` buttons labelled "row 3 column 2, number 47,
-  marked | callable"; the free centre is disabled; the roster and score tables are real lists and
-  tables.
-- **Captions.** `#captions` mirrors every audio event as text.
-- **Contrast.** Body text `#e8ecff` on `#1a2040` and marked cells `#0f1226` on `#ffb454` both clear
-  AA; the High contrast setting swaps in pure black/white/gold and drops both key-art images.
-- **Reduced motion.** Auto-detected via `prefers-reduced-motion` at first boot, overridable in
-  Settings; kills the cell pulse, ball pop and lantern sway and shortens the countdown.
-- **Targets.** 44 px minimum on every button, tray item and settings row.
-- **Other.** Larger text (120%), left-handed tray (row reversed), four independent volume sliders,
-  and a Call speed of "Manual only" for players who want no timer at all.
-
----
+- **Keyboard and pad path** is complete: every screen focuses its first action, the card is a UI grid
+  (arrows / D-pad), every round action has a key and a pad button, dialogs focus their first button.
+- **Screen readers.** Cells are buttons named "row 3 column 2, number 47, marked | callable" inside a
+  grid named "Your bingo card"; the call chip reads "Called 47"; calls, rejections, hints, countdown
+  beats and outcomes are announced (`ui.announce`).
+- **Captions** mirror every audio event. **Contrast**: the runtime's high contrast swaps the tokens and
+  drops the key art. **Reduced motion**: the runtime's option (§8). **Text and UI size**: the runtime's.
+- **Targets**: 44 px minimum on buttons and cells (36 px cells on short landscape screens).
+- **Game options** (Settings): Theme, Call speed (Fast 3 s / Normal 5 s / Relaxed 8 s / Manual only),
+  Hint markable cells, Left-handed action tray (the tray's order reversed), Reset progress (confirmed).
 
 ## 12. StarHermit integration
 
-`starhermit.txt` declares `name`, `launch=index.html`, `owner`, `server=score-script.js`, `cover`,
-and one `control.<action>=<Code> | <Label>` line per keyboard action (left/right/up/down, mark,
-call, claim, undo, hint, pause, camera, back).
-
-All platform calls go through the shared client `starhermit-sdk.js` (loaded before the game
-module) via the thin adapter `js/platform.js`. Without a launch token nothing calls the network
-and the game plays exactly as offline.
-
-**Used:**
-- **Launch token + renewal.** `StarHermit.init()` reads `#game_token=` (library launch) or
-  `#access_token=` (direct sign-in return), strips it from the URL and renews it before expiry.
-  If renewal is refused the game shows a "signed out" toast, hides the account line and invite
-  button, and keeps playing and saving locally.
-- **Sign-in.** On `<id>.starhermit.com` without a token the title shows **Sign in with
-  StarHermit** (`StarHermit.signIn()`); it is hidden when signed in and when running locally.
-- **Identity.** The title account line shows "Playing as <nickname>" (profile `nickname`, falling
-  back to `Player <id prefix>`) plus the cloud sync status; hosted-hall seats use the same name.
-- **Cloud save.** The checksummed localStorage doc is mirrored to the `game:<slug>` cloud-save
-  slot: remote wins on boot (a save made while that load runs is held, then dropped if the remote
-  doc was adopted or pushed if not), saves debounce ~2 s, `pagehide`/hidden tab flush with keepalive.
-  localStorage stays the offline cache.
-- **Settings KV.** Every top-level preference (volumes, mute, theme, graphics, reduced motion,
-  high contrast, larger text, left-handed tray, call speed, auto-hint) is patched to the
-  per-player settings store when it changes; on boot the stored values override the local ones.
-- **Controls.** Keyboard input is routed by `event.code` through `StarHermit.loadBindings()`
-  (defaults = the manifest's `control.*` lines). The action-tray key hints and the Help
-  "Keyboard" card show the effective bindings.
-- **Invite link.** Signed-in players get **Invite a friend** on the title, which copies
-  `StarHermit.inviteLink()` to the clipboard with a confirmation toast.
-- **Hosted halls via realtime rooms.** With a token, Hosted Play quick-joins (or creates and
-  opens) a StarHermit realtime room and connects to `/ws/v1/realtime?roomId=…&access_token=…`.
-  The room's host client runs the caller/rounds with the same Session + bots as local play
-  (`js/hallnet.js` `HallHost`); guests send their existing mark/claim commands as binary frames
-  (guest→host; the relay stamps the 16-byte sender id; host→everyone snapshots). Mid-round
-  joiners spectate until the next round; the host posts `POST /rooms/{id}/result` and rounds
-  restart on a 15 s grace. Without a token, Hosted Play keeps using the repo's own `server.js`
-  hall over `/ws` (local dev only — that protocol is unreachable on-platform).
-- **Cover art.** `coverart.png` (1200×675).
-
-- **Save conflicts.** After the boot load, cloud writes are conditional (SDK ETag). When another
-  device saved first the SDK emits `saveconflict`; the game reloads the slot, merges it with the
-  local document (`mergeSaves`: union of journey stages, lessons, play days and achievements with
-  the earliest unlock time, best score per stage and per day, the larger round count, this
-  device's settings), adopts it and saves again. A failed reload keeps local progress.
-- **Report a problem.** Settings (signed in only, from `game-options.js`) files a bug report
-  through `StarHermit.reportBug`; uncaught errors are filed as crash reports through
-  `StarHermit.captureCrashes` (SDK-capped).
-
-The account-control strings (sign-in, invite, toasts, "Playing as", session-expired and terms
-dialogs) are localized in the nine locales (`js/sh-strings.js`) and follow the game language.
-
-**Leaderboard.** One board, `high-score` (integer, higher is better, 0–100,000). When signed in,
-every finished solo round except Learn posts its total (floored at 0) through
-`StarHermit.submitScores` (a practice session whose `score-script.js` posts it), and the results
-screen shows "Leaderboard rank: #N" (or posted / not posted), localized in the nine locales
-(`js/sh-strings.js`). Hosted halls and standalone play post nothing.
-
-**Not used:** matchmaking queues, friend-picker invites, session chat, platform achievements and
-replays — the only platform session is the short practice session that posts a score.
-Achievements and personal bests stay local and travel in the cloud save.
-
----
+- **Player.** `player()`: the title shows "Playing as <display name> · cloud save synced | saving… |
+  cloud save offline"; guests see **Sign in with StarHermit** (the runtime's sign-in). Signed in, **Invite
+  a friend** copies the invite link. Signing out shows a toast and play goes on locally.
+- **Save.** The progress record (`js/progress.js`) is the game's save, schema 1, on the device and in the
+  cloud slot; conflicts merge the best of both (union of stages, lessons, days; best score per stage
+  and per day; earliest unlock times; the larger round count). The browser build's cloud save (the JS
+  SDK's JSON document under `game:<slug>`) shows as foreign: its progress is merged in and the slot
+  replaced once (`replaceForeign`). Guests' old browser `localStorage` progress does not migrate.
+- **Options.** Theme, call speed, hint markable cells and the left-handed tray are synced game settings.
+  The browser build's account settings keys (`theme`, `callSpeed`, `autoHint`, `leftHanded`, …,
+  `ui.language`) are adopted where the game still has the option and then removed; volumes, mute,
+  graphics, reduced motion, high contrast, larger text and language are the runtime's Options.
+- **Leaderboard.** One board, `high-score` (integer, higher is better, 0–100,000). Signed in, every
+  finished solo round except Learn posts its total (floored at 0) on a practice session to
+  `server.js`, which range-checks it (the user's decision: solo scores keep the client's total); the
+  results show "Leaderboard rank: #N" (or posted / not posted). Hosted rounds post nothing.
+- **Hosted halls** (signed in). Hosted Play quick-joins an open hall of the game (one team of four
+  seats) or creates and opens one; the lobby lists the players, and the host's **Start round** starts
+  the room. The platform binds a session to it and `server.js` referees: seats are the room's players
+  by slot, then bot lanterns to four; the pattern, par and theme are the day's (`dailyFor` on the
+  platform's UTC day) with a deck shuffled from the script's own seed; it calls every 4 s, the bots mark
+  and claim right after each call (the browser build's HallHost rule), and each mark or claim is applied
+  for the sender's seat (penalties included). Players get the cards, marks and the numbers called so
+  far — never the seed or the deck to come. The round ends on a claimed pattern, 8 s after the 75th call
+  with no claim (`deck-exhausted`), or when every player has left (`abandoned`); the script returns the
+  result (winner, each seat's score, the ranking), which closes the room and is recorded. No client
+  reports a result.
+- **Daily.** The platform's clock (`serverNow()`), the device's UTC date when offline.
+- **Not used:** matchmaking queues, friend-picker invites, chat, platform achievements, replays.
+  Achievements and personal bests stay in the save.
 
 ## 13. Technical architecture
 
-**Layering.** `rules.js` (pure) ← `session.js` (log + undo + replay) ← `game.js` / `server.js`.
-The client and the server import the *same* rules and session modules, so a hosted snapshot
-deserializes into exactly the state the server holds. `game.js` never mutates `state` directly; it
-either calls `Session.dispatch` or replaces `state` wholesale from a snapshot via a read-only
-`hostedSessionFacade`.
+**Layering.** `js/rules.js` (pure) ← `js/session.js` (log, undo, replay) ← `native/app.ts`; hosted rounds
+read the server's view through a session-shaped facade over `HallClient`. `server.js` runs the same
+rules (its RULES block is generated; `npm run server` rewrites it, the tests fail when it is stale).
 
-**Determinism and replay.** `exportReplay()` emits `{schema, rulesVersion, meta, seed, pattern,
-parCalls, playerIds, initialHash, commands, hashes, terminal}`. Hashes are FNV-1a over the canonical
-serialization, recorded every 20 ticks and at the end. `Session.verifyReplay` re-runs the command
-log from `createGame` and rejects on `bad-schema`, `initial-hash-mismatch`, `hash-mismatch`,
-`winner-mismatch` or `final-hash-mismatch`. **Copy Replay** on the results screen puts the envelope
-on the clipboard (with a `prompt()` fallback).
+**Time.** A round clock advanced by the runtime's fixed steps (60 a second) drives the countdown beats,
+auto calls, bot reactions (600 + (1 − skill)·4000 + jitter ms after each call) and the beat before results;
+a pause or a hidden window freezes it, so play scripts replay exactly.
 
-**Persistence.** One `localStorage` key holds `{payload, checksum}`; a checksum mismatch or any
-parse error silently restores defaults rather than throwing. Saved: all settings, `journeyDone`,
-`lessonsDone`, `bestScores` per content id, `dailyHistory` per day, achievements, `gamesPlayed`.
-Reset progress clears progress only and keeps settings. In hosted mode the same doc is mirrored
-to the platform cloud-save slot (zip+base64): remote wins on boot (nothing is pushed until that load
-settles), local writes debounce ~2 s to a PUT, and `pagehide` flushes pending saves. localStorage remains the offline cache.
+**Determinism and replay.** `mulberry32` everywhere; Copy Replay puts the envelope (`exportReplay()`:
+seed, commands, periodic hashes, terminal) on the clipboard; results print the seed and the final hash.
 
-**Rendering budget.** Pixel ratio = min(devicePixelRatio, preset cap) × render scale × adaptive
-scale, with caps Low 1, Balanced 1.5, High/Ultra 2 (Ultra also ×1.25). Low: no shadows, no post,
-canvas MSAA, 12 plain lanterns, still background — `hall-post.js` and its addons are not even
-fetched. Balanced: 512² shadows, bloom, grade, FXAA, reflections, 24 lanterns. High: 1024²
-shadows, GTAO, SMAA, 40 lanterns. Ultra: 2048² shadows, 16-sample GTAO, 4× MSAA render target.
-The composer runs only when a pass needs it and is rebuilt when its key (passes, size, ratio)
-changes. Lanterns are one `InstancedMesh` (+ one for caps); the call number is drawn into one
-256×256 `CanvasTexture` reused for both `map` and `emissiveMap`. The hall skips rendering while its
-holder is collapsed (compact layouts), and the title lanterns stop when the title is hidden. The loop skips entirely while `document.hidden`, and `dt` is clamped to
-50 ms so a backgrounded tab cannot jump the sway.
-
-**Failure paths.** No WebGL → an explanatory paragraph in the canvas holder and a fully playable
-card. Context lost → `preventDefault()` plus a reload message; progress is already saved. No hall
-available → "Hosted play is unavailable right now. Try Practice instead." (hosted mode off or a
-rooms failure). Offline `/api/v1` → hosted features degrade to local play; the cloud slot is
-skipped entirely without a token. Hosted rooms socket drop mid-round → after 1.5 s the guest
-renews the launch token (`StarHermit.renewForReconnect()`) and then makes one reconnect attempt via
-`GET /rooms/mine`, opening the socket with the fresh token; a transient renewal failure waits 1.5 s
-and renews again (up to 5 times, never reopening with the old token) before the honest unavailable
-message. If the token can no longer be renewed the guest leaves the hall to the title and a
-**Your session expired** dialog explains it, with **Back to StarHermit** (`StarHermit.relaunch()`)
-and **Not now** (keep playing locally). A renewal that answers `'terms-required'` (or a
-`rooms/mine` 403 `terms_acceptance_required`) is handled the same way with an **Updated terms to
-accept** dialog. If `rooms/mine` succeeds but no longer lists the hall the guest was in, the loop
-ends with "This hall is no longer available — start a new hosted game from the title." (status
-line and toast) instead of joining a different hall. The host leaving closes the hall for everyone. Missing SFX clip → synth fallback.
-
-**How the e2e test drives the real UI.** `tests/e2e.mjs` serves the repo over an ephemeral port and
-drives headless Chrome through `playwright-core`. It only ever clicks visible elements —
-`[data-nav=…]`, `#setup-start`, `#card-grid .card-cell[data-cell=…]`, `#btn-call`, `#btn-claim`,
-`#btn-undo`, `#btn-hint`, `#btn-pause`, and the modal's Resume / Leave round buttons — and reads the
-DOM only to synchronize (which cells carry `.markable`, whether `#btn-claim` is disabled, the
-phase on `#live-status[data-phase]`). Each pass ends with a language step against a stubbed
-StarHermit API (`tests/starhermit-e2e.mjs`): `GET /api/v1/me/language` → fr-CA makes Automatic
-resolve to fr-CA; choosing Deutsch re-renders Settings in place (the Language select survives),
-PUTs `ui.language`, Report a problem posts to `/reports`, and no fieldset is cut off; then a
-practice round is paused, Italiano is chosen from the pause dialog's Settings, and the pause
-dialog, objective, tray, card labels and status re-render while the card stays the same. Both a 1280×800 desktop context and a fresh 390×844 touch context run the
-full flow; any `pageerror` or non-noise `console.error` fails the run.
-
----
+**Rendering.** The scene draws only on the play screen when the hall has room; the UI paints the page
+colour around its rectangle. The card cells, call chip and sky lanterns are overlay drawing, never canvas
+repaints per frame; the ball's number is one 256² canvas texture repainted per call.
 
 ## 14. Testing and acceptance criteria
 
-`npm test` runs 52 `node --test` cases with zero dependencies:
+`npm test` runs:
+- **Unit** (`node --test`, 54 cases): `tests/rules.test.js` and `tests/session.test.js` (unchanged from the
+  browser build: RNG, cards, patterns, scoring, ties, serialization, undo, replay verification, content
+  validation); `tests/save.test.mjs` (old cloud document, normalization, merge, options);
+  `tests/server.test.mjs` (`server.js` under a fake platform host: declarations and a current RULES block,
+  score posting, seats, views without the seed or deck, the caller, seat-bound commands and penalties,
+  full rounds to a recorded result, leavers, deck exhaustion); `tests/hosted.test.mjs` (two `HallClient`s
+  over a fake platform running `server.js`, lobby to result); `tests/jint.test.mjs` (a whole hall and a
+  score post in the platform's own Jint script worker under the 250 ms budget — skipped where the worker
+  is not built); `tests/i18n.test.mjs` (every key of `native/*.ts`, `js/*.js` and the content in all nine
+  locales, no stray keys); then `tests/validate-content.js` (44 items).
+- **Native** (`tests/native.mjs`): the web index matches the files, `tsc` (strict, no skipLibCheck),
+  `starhermit check .` with no warnings, and every `tests/native/*.play` as a guest `--render-check`:
+  `screens.play` (Help, Settings and Options, reset dialog, lists, Daily, pickers, Hosted Play as a guest),
+  `practice.play` (call, hint, a refused mark undone, pause, Help and back, Leave round),
+  `journey-stage1.play`, `challenge-speed.play` and `learn-lines.play` — whole rounds to results generated
+  by `tools/gen-plays.mjs` from the rules (it replays the caller, the player's marks and the bots exactly).
+- **Browser** (`npm run test:browser`, `tools/browser-play.mjs`): the packaged loader in Chrome on the GPU
+  (`~/games/tools/gpu-chrome.mjs`) at 1366×768, 1920×1080 (the 3D hall), a 390×844 phone at DPR 3 and an
+  844×390 landscape phone: Quick Play by keys, a call, a hint, a tap on the card, the pause dialog; any
+  console error or warning or the runtime's error screen fails.
 
-- **`tests/rules.test.js` (16).** RNG determinism; card column ranges, uniqueness and free centre;
-  called-set growth; `legalActions` matching the called set; invalid marks and false claims scoring
-  −25; every one of the 7 patterns reachable and detected by `patternComplete`; `countLines`;
-  score-component arithmetic; `compareResults` tie-break order; `serialize`/`deserialize`/`hashState`
-  round-trip and hash stability.
-- **`tests/session.test.js` (10).** Identical seed + commands ⇒ identical hashes; tampered mid-run
-  and initial hashes detected; undo restores the prior state and a post-undo replay still verifies;
-  golden easy/medium/hard sessions terminate with valid winners; all 44 content items pass the
-  offline validator; Journey has 40 unique ids and seeds; the daily is stable per day and differs
-  across days; challenges validate.
-- **`tests/platform.test.js` (9).** Adapter + real SDK with stubbed fetch: fragment token read,
-  stripped and decoded; profile nickname (never username) with Bearer; cloud-save round-trip at
-  `game:<slug>` with sync status; settings KV load + changed-key PATCH after priming; binding
-  overrides and invite link; standalone = zero fetches; sign-in offered on the UUID platform host; a stale conditional write is refused (412), fires the conflict hook, and a reload + `mergeSaves` lands; `mergeSaves` keeps the best of both records.
-- **`tests/hallnet.test.js` (15).** Frame codec round-trip + caps; socket identity harvest
-  (room/roster/whoami); guest 30 msg/s throttle; host seating + bot fill; mid-round spectator →
-  next-round seat; forced-identity + bounds validation + idempotent duplicates; authoritative call
-  cadence with matching snapshot hash; round-end restart; seat retention across an absent guest; first connect uses the current token
-  without renewing; reconnect renews first and opens with the new token; `'retry'` never reopens
-  the old URL; `'relaunch'` stops and raises the session-expired prompt; `'terms-required'` stops and raises the
-  terms prompt; `mineStatus` separates listed rooms, terms consent and failures; prompt strings in
-  all nine locales.
-
-`npm run validate` runs the same offline validator standalone (44 items, 0 failures): it plays a
-perfect player through each stage and asserts the pattern is reachable within 75 calls and that
-`parCalls` is not more than 2× off the measured need.
-
-`npm run test:e2e` runs the playthrough described in §13. `node tests/hosted-smoke.mjs` drives
-the real UI in Chrome against a mock platform with a launch token (fragment strip, account line,
-debounced cloud PUT, zero console errors). `node tests/hall-rooms-smoke.mjs` runs a mock
-realtime platform (REST lobby + relay over real sockets) with a `HallHost` host and a guest
-client: create/open/quick-join, seating, authoritative calls, guest commands, validation
-rejections, duplicate-id suppression, result posting, reconnect seat reclaim, and host-departure
-room close.
-
-**QA bar, as checkable statements.**
-
-1. Every mode reachable from the title is playable to a results screen through visible controls
-   alone — verified for Practice on desktop and mobile by `e2e.mjs`; Journey, Daily, Challenge and
-   Learn share the same `startRound` path and the same Setup screen.
-2. A first-time player is taught by the board: Setup states the goal, markable cells pulse, `Hint`
-   explains, and three Learn lessons gate on the player performing each action.
-3. No console errors or warnings on any screen at either viewport — asserted by `e2e.mjs`, which
-   filters only known swiftshader/GPU noise and the expected `/ws` handshake failure of the
-   deliberate hosted-offline test.
-4. Nothing is cut off at 1280×800, 390×844 portrait or a 500 px-tall landscape: the card, the call
-   display and the Call/Claim buttons are visible without horizontal scroll, and safe-area insets
-   pad all four edges.
-5. Rules, hints, tutorial and bots all read the same `legalActions`, so nothing can advise an
-   illegal move.
-6. Every round is reproducible from its seed and command log, and the results screen prints both the
-   seed and the final hash.
-
----
+QA bar: every mode reaches results through visible controls; nothing is cut off at 1366×768, 390×844 or
+844×390; rules, hints and bots read the same `legalActions`; rounds are reproducible from seed and log.
 
 ## 15. Asset inventory
 
-| Path | Purpose | Source | Status |
-|---|---|---|---|
-| `assets/title-hall.webp` | Title-screen backdrop: receding rows of amber lanterns over a reflective floor, dark centre for the menu column | FLUX.2 klein, 1280×720, seed 87451 (garbled hallucinated text removed with `ffmpeg delogo`, WebP q82, 51 KB) | generated this pass, wired (`#screen-title` background) |
-| `assets/results-lantern.webp` | Results banner: a released lantern rising over scattered cards and number balls | FLUX.2 klein, 1024×576, seed 20463 (WebP q82, 27 KB) | generated this pass, wired (`.results-art`) |
-| `coverart.png` | StarHermit cover, 1200×675 | prior pass | shipped |
-| `icon.png`, `favicon.svg` | Platform icon and tab icon | prior pass | shipped |
-| `sfx/ui-lantern-tap.opus`, `ui-menu-select.opus` | `ui` cue variants | MOSS-SFX v2 | shipped |
-| `sfx/call-ball-draw.opus`, `call-number-chime.opus` | `call` cue variants | MOSS-SFX v2 | shipped |
-| `sfx/mark-paper-stamp.opus`, `mark-ink-dab.opus` | `mark` cue variants | MOSS-SFX v2 | shipped |
-| `sfx/invalid-wood-thud.opus`, `invalid-brush-scratch.opus` | `invalid` cue variants | MOSS-SFX v2 | shipped |
-| `sfx/line-lantern-glow.opus`, `line-chime-rise.opus` | `line` cue variants | MOSS-SFX v2 | shipped |
-| `sfx/win-festival-fanfare.opus`, `win-bingo-bells.opus` | `win` cue variants | MOSS-SFX v2 | shipped |
-| `sfx/lose-paper-sigh.opus`, `lose-ember-fade.opus` | `lose` cue variants | MOSS-SFX v2 | shipped |
-| `sfx/tick-clock-tap.opus`, `tick-wood-tick.opus` | `tick` countdown variants | MOSS-SFX v2 | shipped |
-| `sfx/start-gong-swell.opus` | `go` — round-open swell on the final countdown beat | MOSS-SFX v2, 100 steps | generated this pass, wired |
-| `sfx/achieve-bell-bloom.opus` | `achievement` — badge-unlock bloom on results | MOSS-SFX v2, 100 steps | generated this pass, wired |
-| `js/three.module.js`, `js/three.core.min.js` | three.js r185 runtime | vendored (MIT) | shipped |
-| `js/vendor/three/addons/**` | three.js r185 postprocessing/shaders/RoomEnvironment addons | vendored from `three@0.185.1` (MIT) | shipped |
+| Path | Purpose | Source |
+|---|---|---|
+| `assets/title-hall.webp` | Title backdrop | FLUX.2 klein, 1280×720 |
+| `assets/results-lantern.webp` | Results banner | FLUX.2 klein, 1024×576 |
+| `cover.jpg`, `coverart.png`, `icon.png` | Store cover, cover art, icon | prior passes |
+| `sfx/*.opus` | 18 one-shots, two per event (`sfx/manifest.md`) | MOSS-SFX v2 |
+| `assets/ui-style.json` | The converted style sheet | `npm run css` |
 
-No 3D model or character animation is generated: the hall is procedural primitives and instanced
-spheres by design (pillar 5), and there is no humanoid in the game.
-
----
+No 3D model is loaded: the hall is procedural primitives and instanced lanterns.
 
 ## 16. Known limitations
 
-1. **Local-player assumptions in offline paths.** `tryMarkCell`, `tryClaim`, `endRound` and parts of
-   `showResults` address the local seat as the literal id `'you'` and index `players[0]`. This is
-   correct offline (the local seat is always seat 0) and hosted play uses separate code paths, but
-   the two conventions have not been unified behind `meId()`.
-2. **Invalid-actions row sign.** The results table renders the invalid-actions row through a
-   `v >= 0 ? '+' : ''` formatter, so a zero penalty prints "+0"; the deduction itself is correct in
-   the total.
-3. **Bots do not mis-claim.** Bots only mark and claim correctly, so `claim-too-late` and bot false
-   claims are reachable in the rules but essentially never seen in play.
-4. **Hosted halls are host-routed rooms with no live-platform verification.** The rooms REST
-   shapes, roster/presence pushes, and host-assignment rules follow the platform wiki but are
-   parsed defensively (self/host ids come from roster flags or a host whoami echo); only the mock
-   platform in `tests/hall-rooms-smoke.mjs` has run them end-to-end. The host tab backgrounding
-   stalls the caller for all guests (the relay owns no sim). Friend invites and matchmaking beyond
-   quick-join are not implemented.
-5. **Deck exhaustion has no ceremony.** If 75 calls pass with no winner the round stays active with
-   `call` illegal; the player must leave via Pause. There is no "nobody claimed" results screen.
-6. **Achievement counters are session-scoped.** `achievementCtx.linesTotal` and `winStreak` reset on
-   reload, so Line Keeper and Steady Flame are effectively per-session.
-7. **Hosted replays are not exportable.** Copy Replay is hidden on hosted results because the
-   envelope lives on the server.
-
----
+1. **Local-player assumptions.** Offline paths address the local seat as `'you'` / `players[0]`
+   (hosted play uses `meId()`), as before.
+2. **Invalid-actions row sign.** The local results table prints a zero penalty as "+0".
+3. **Bots do not mis-claim.** `claim-too-late` and bot false claims are essentially never seen.
+4. **Deck exhaustion offline has no ceremony.** After 75 calls with no winner a local round stays
+   active; the player leaves via Pause. (Hosted halls end it after 8 s.)
+5. **Achievement counters are session-scoped** (`linesTotal`, `winStreak` reset on restart).
+6. **Hosted halls**: one round per hall (the browser build's host tab restarted rounds every 15 s);
+   no spectators or mid-round joins (a started room takes no joiners); the hosted client path is not
+   live-tested here (only the fake platform and the Jint worker run it); hosted replays are not exportable.
+7. **Lessons have auto calls.** A lesson's countdown arms the auto caller at the chosen call speed, as
+   the browser build did (the lesson steps still wait for the player).
+8. **Arrow keys stop at the card's edge** (the browser build wrapped them).
+9. **Old guest progress** in a browser's `localStorage` does not carry over (cloud saves do).
 
 ## 17. Design intent not yet implemented
 
-- **Unified seat identity.** Route every offline read through `meId()`/`mePlayer()` so the local
-  seat is never assumed to be `players[0]`.
-- **A no-winner terminal state.** Emit a `deck-exhausted` terminal reason and show a results screen
-  for it instead of leaving the round parked.
-- **Lifetime achievement counters.** Persist `linesTotal` and `winStreak` in the save file.
-
-## Browser interference
-
-`browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.
-
-
-## Sound and frame-rate options
-
-The options panel includes Sound controls for master, music, effects and UI volume, a mute that preserves volume levels, and an Auto or manual concurrent-sound limit (1–64). Changes apply immediately with perceptual volume curves. A shared allocator bounds Web Audio and media playback, including loops and scheduled sources. Graphics includes Auto display refresh or a custom maximum frame rate from 1–1000 FPS; rendering is paced independently of simulation and input. Preferences persist locally, with FPS stored per detected GPU, and reconcile with Starhermit settings when signed in. The controls support keyboard and touch input and the supported English, Spanish, German, French, Portuguese and Italian locales.
+- **Unified seat identity** offline (route every read through `meId()`).
+- **A no-winner terminal state** offline with its own results screen.
+- **Lifetime achievement counters** persisted in the save.

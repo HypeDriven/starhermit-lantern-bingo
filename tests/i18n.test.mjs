@@ -1,9 +1,9 @@
 // Every player-facing string exists in all nine locales (node --test).
-// Keys are the US-English source strings (see tests/i18n-keys.mjs).
+// Keys are the US-English source strings of native/*.ts, js/*.js and the
+// content tables (see tests/i18n-keys.mjs).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DICTS, LOCALES, T, setLocale } from '../js/i18n.js';
-import { GFX_STRINGS } from '../js/gfx-strings.js';
 import { shStrings } from '../js/sh-strings.js';
 import { ALL } from './i18n-keys.mjs';
 
@@ -30,11 +30,10 @@ test('no locale carries keys that no longer exist', () => {
   }
 });
 
-test('Graphics and StarHermit strings exist in all nine locales, including the terms prompt', () => {
+test('the StarHermit account strings exist in all nine locales', () => {
   for (const locale of LOCALES) {
-    assert.ok(GFX_STRINGS[locale]?.graphics, locale);
     const sh = shStrings([locale]);
-    for (const k of ['signIn', 'expiredTitle', 'expiredBody', 'termsTitle', 'termsBody', 'relaunch', 'notNow']) assert.ok(sh[k], locale + ' ' + k);
+    for (const k of ['signIn', 'invite', 'copied', 'copyFailed', 'signedOut', 'playingAs', 'lbPosting', 'lbRank', 'lbPosted', 'lbNotPosted']) assert.ok(sh[k], locale + ' ' + k);
   }
 });
 

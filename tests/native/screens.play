@@ -1,0 +1,68 @@
+# The menus: How to Play, Settings (the runtime's Options and back), the Journey and Learn lists,
+# the Daily set-up, the Practice and Challenge pickers, Hosted Play as a guest, the reset dialog.
+until 300 Lantern Bingo
+frames 60
+expect Journey 0/40
+click =Help
+until 60 Fair play
+frames 10
+expect Arrow keys move between cells
+save help
+click =Back
+until 60 =Play
+frames 10
+click =Settings
+until 60 Accessibility & Controls
+frames 10
+save settings
+click =Open Options
+frames 30
+key F1 1
+frames 30
+click =Reset progress
+until 60 This clears journey progress
+frames 10
+click =Cancel
+frames 10
+click =Done
+until 60 =Play
+frames 10
+click =Journey
+until 60 Mastery 8
+frames 10
+expect Stage 1 — Any Line
+click =Back
+until 60 =Play
+frames 10
+click =Learn
+until 60 Marking a Call
+frames 10
+save learn
+click =Back
+until 60 =Play
+frames 10
+click =Daily
+until 60 Daily Lantern —
+frames 10
+expect Ranked result.
+save daily
+click =Back
+until 60 =Play
+frames 10
+click =Practice
+until 60 Select difficulty
+frames 10
+click =Cancel
+frames 10
+click =Challenge
+until 60 Iron Frame
+frames 10
+click =Cancel
+frames 10
+click =Hosted Play
+until 60 Hosted play is unavailable right now
+frames 10
+save hosted-guest
+click =Back
+until 60 =Play
+frames 10

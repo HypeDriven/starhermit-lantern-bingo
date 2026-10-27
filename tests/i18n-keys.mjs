@@ -1,7 +1,7 @@
 // Key extraction for the i18n coverage test (run directly to list the keys).
-// Keys are the US-English source strings: literal T('…') / N('…') calls and
-// T(...) template keys in js/, data-i18n* markup in index.html (rich-text
-// paragraphs use their authored innerHTML), the content tables' display fields
+// Keys are the US-English source strings: literal T("…") / N("…") calls (and
+// announce / setStatus / setHint, which translate their key) in native/*.ts
+// and js/*.js, ternaries inside T(), the content tables' display fields
 // (patterns, lessons, challenges, themes) and the audio captions.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,21 +10,19 @@ import { CHALLENGES, LESSONS, THEMES } from '../js/content.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const unescape = (s) => s.replace(/\\(['"\\])/g, '$1');
-const unhtml = (s) => s.replace(/&amp;/g, '&');
 
 export function sourceKeys() {
   const keys = new Set();
-  const call = /(?<![\w.$])(?:T|N|setStatus|announce)\(\s*(?:'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)")/g;
-  for (const f of readdirSync(join(ROOT, 'js'))) {
-    if (!f.endsWith('.js') || f === 'i18n.js') continue;
-    const src = readFileSync(join(ROOT, 'js', f), 'utf8');
+  const call = /(?<![\w.$])(?:T|N|setStatus|announce|setHint)\(\s*(?:'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)")/g;
+  const files = [
+    ...readdirSync(join(ROOT, 'native')).filter((f) => f.endsWith('.ts')).map((f) => join(ROOT, 'native', f)),
+    ...readdirSync(join(ROOT, 'js')).filter((f) => f.endsWith('.js') && f !== 'i18n.js').map((f) => join(ROOT, 'js', f)),
+  ];
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8');
     for (const m of src.matchAll(call)) keys.add(unescape(m[1] ?? m[2]));
-    // ternaries inside T(cond ? 'a' : 'b', …)
-    for (const m of src.matchAll(/T\([^'"()]*\?\s*'([^']+)'\s*:\s*'([^']+)'/g)) { keys.add(m[1]); keys.add(m[2]); }
+    for (const m of src.matchAll(/T\([^'"()]*\?\s*(['"])([^'"]+)\1\s*:\s*(['"])([^'"]+)\3/g)) { keys.add(m[2]); keys.add(m[4]); }
   }
-  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  for (const m of html.matchAll(/data-i18n(?:-aria|-title)?="([^"]+)"/g)) keys.add(unhtml(m[1]));
-  for (const m of html.matchAll(/<p data-i18n-html>([\s\S]*?)<\/p>/g)) keys.add(m[1].trim());
   return keys;
 }
 
@@ -35,10 +33,9 @@ export function contentKeys() {
   for (const l of LESSONS) { add(l.title); for (const s of l.steps) add(s.text); }
   for (const c of CHALLENGES) add(c.title, c.constraint);
   for (const t of THEMES) add(t.name);
-  const audio = readFileSync(join(ROOT, 'js/audio.js'), 'utf8');
-  for (const m of audio.matchAll(/_caption\('([^']+)'\)/g)) add(m[1]);
-  const caps = audio.slice(audio.indexOf('SFX_CAPTIONS = {'), audio.indexOf('};', audio.indexOf('SFX_CAPTIONS = {')));
-  for (const m of caps.matchAll(/: '([^']+)'/g)) add(m[1]);
+  const audio = readFileSync(join(ROOT, 'native/audio.ts'), 'utf8');
+  const caps = audio.slice(audio.indexOf('CAPTIONS'), audio.indexOf('};', audio.indexOf('CAPTIONS')));
+  for (const m of caps.matchAll(/: "([^"]+)"/g)) add(m[1]);
   return keys;
 }
 

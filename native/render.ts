@@ -8,9 +8,8 @@
 // board, rising dust motes, fog from 12 to 26 and the theme's tint. Clicking
 // a tile marks its cell.
 //
-// Gaps and changes from three.js: light intensities are three.js's ÷ π (the
-// engine's convention); the key light's shadow reaches by distance (three.js
-// fitted an orthographic box around the card, ball and pole); the post
+// Gaps and changes from three.js: light intensities, the key light's fitted
+// shadow box and RoomEnvironment are the page's (minor 28); the post
 // chain is renderer.ao / bloom / grade / antialias (the grade is
 // hall-post.js's GradeShader in display space); the old adaptive
 // resolution, pixel-ratio cap and frame-rate meter are the runtime's. The
@@ -116,20 +115,22 @@ const cameraLook = new Vector3(0, 0.8, 0);
 camera.position.copy(cameraHome);
 camera.lookAt(cameraLook);
 
-// Key light: warm directional; its shadow reaches over the card, ball and pole.
-const key = new DirectionalLight(0xfff2dd, 3.2 / PI);
+// Key light: warm directional with a shadow box fitted tightly around card, ball and pole.
+const key = new DirectionalLight(0xfff2dd, 3.2);
 key.position.set(4, 8, 5);
 key.target.position.set(0, 0.6, 1.2);
-key.shadow.distance = 16;
+Object.assign(key.shadow.camera, { left: -3.4, right: 3.4, top: 3.4, bottom: -3.4, near: 4, far: 16 });
+key.shadow.camera.updateProjectionMatrix();
 key.shadow.bias = -0.0004;
+key.shadow.normalBias = 0.02;
 key.shadow.radius = 3;
-const hemi = new HemisphereLight(0x8899bb, 0x443355, 1.6 / PI);
+const hemi = new HemisphereLight(0x8899bb, 0x443355, 1.6);
 // Warm glow over the call ball.
-const ballLight = new PointLight(0xffc370, 30 / PI, 12, 1.8);
+const ballLight = new PointLight(0xffc370, 30, 12, 1.8);
 ballLight.position.set(0, 3.4, 1.5);
-let ballLightBase = 30 / PI;
+let ballLightBase = 30;
 // Lantern-row fill from behind, tinted by the theme.
-const lanternFill = new PointLight(0xffb454, 8 / PI, 14, 1.6);
+const lanternFill = new PointLight(0xffb454, 8, 14, 1.6);
 lanternFill.position.set(0, 2.2, -3.2);
 scene.add(key, key.target, hemi, ballLight, lanternFill);
 
@@ -308,13 +309,17 @@ export function applyLook(next: Look): void {
   pm.color.setHex(detailed ? 0xb08d57 : 0x554433);
   if ("metalness" in pm) { pm.metalness = detailed ? 0.85 : 0; pm.roughness = detailed ? 0.32 : 0.8; }
   motes.visible = next.animated;
-  ballLightBase = (detailed ? 14 : 30) / PI;
+  ballLightBase = detailed ? 14 : 30;
   ballLight.intensity = ballLightBase;
   ballLight.position.set(0, detailed ? 4.2 : 3.4, detailed ? 2.6 : 1.5);
   lanternFill.visible = detailed;
   // Reflections: RoomEnvironment image-based lighting.
   if (next.reflections && !envTex) {
-    try { envTex = new PMREMGenerator(renderer).fromScene(new RoomEnvironment(renderer), 0.04).texture; }
+    try {
+      const room = new RoomEnvironment(renderer);
+      room.position.y = -3.5; // three r183+
+      envTex = new PMREMGenerator(renderer).fromScene(room, 0.04).texture;
+    }
     catch (e) { console.warn(`environment: ${e instanceof Error ? e.message : String(e)}`); }
   }
   scene.environment = next.reflections ? envTex : null;
@@ -326,11 +331,11 @@ export function applyLook(next: Look): void {
   };
   // High threshold: only lantern paper, the ball's lit face and highlights bloom (UnrealBloomPass 0.45, 0.25, 2.0).
   renderer.bloom = next.bloom ? { strength: 0.45, radius: 0.25, threshold: 2.0, resolution: b.bloomRes } : null;
-  // hall-post.js GradeShader (display space): a gentle S-curve, a touch more saturation,
-  // warm highlights / cool shadows, lifted blacks, the 0.26 vignette.
+  // hall-post.js GradeShader (linear, before the output): a 0.22 S-curve, saturation 1.1,
+  // warm highlights / cool shadows, the s * 0.97 + 0.02 lift with over-range light kept, the 0.26 vignette.
   renderer.grade = next.grade ? {
-    space: "display", contrast: 0.22 * 0.5, saturation: 1.1,
-    shadows: [0.95 * 0.97, 0.97 * 0.97, 1.06 * 0.97], highlights: [1.05 * 0.97, 0.97, 0.94 * 0.97], split: [0.2, 0.8],
+    space: "linear", contrast: 0.22, saturation: 1.1,
+    shadows: [0.95, 0.97, 1.06], highlights: [1.05, 1.0, 0.94], split: [0.2, 0.8], levels: [0.97, 0.02], overRange: "keep",
     vignette: { amount: 0.26, inner: 0.3, outer: 0.85 },
   } : null;
   renderer.antialias = next.antialias;
@@ -351,6 +356,7 @@ export function setView(rect: { x: number; y: number; w: number; h: number } | n
     view = next;
     winW = W; winH = H;
     // The window shows the hall's w × h image at (x, y): the image spans -x .. W-x.
+    if (view) { camera.aspect = view.w / view.h; camera.updateProjectionMatrix(); }
     if (view) camera.setViewOffset(view.w, view.h, -view.x, -view.y, W, H);
   }
   sync();

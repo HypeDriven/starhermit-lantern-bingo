@@ -15,7 +15,7 @@ pattern close, and slam CLAIM before the other lanterns do.
 | Genre | Shared-call number game (75-ball bingo family) with seeded solo/bot rounds and server-refereed hosted halls |
 | Players | 1 human vs 0–4 deterministic bot "lanterns" offline; up to 4 players (empty seats bot lanterns) in a hosted hall |
 | Session | 3–9 minutes per round (`expectedMinutes` on every content item); a Journey sitting is 2–4 rounds |
-| Platforms | A StarHermit engine script game (engine 1.23.0, host API 1.21): natively in the StarHermit client and in desktop and mobile browsers through the engine's web runtime (`index.html` is the engine's loader) |
+| Platforms | A StarHermit engine script game (engine 1.24.0, host API 1.21): natively in the StarHermit client and in desktop and mobile browsers through the engine's web runtime (`index.html` is the engine's loader) |
 | Rendering | `starhermit:ui` card, menus and HUD over a `starhermit:scene` lantern hall that shows under the card on tall desktop windows. The card is the game; the hall is scenery. |
 | Persistence | The game's save (`starhermit:storage` `saves`) on the device and, signed in, in the account's cloud slot; the game's options as synced settings |
 
@@ -23,7 +23,7 @@ pattern close, and slam CLAIM before the other lanterns do.
 
 | Path | Owns |
 |---|---|
-| `starhermit.txt` | Manifest: `engine.version=1.23.0`, `engine.minor=19`, entry `native/main.ts`, capabilities platform/storage/clipboard, `server=server.js`, the `control.*` keys and `engine.gamepad.*` defaults. |
+| `starhermit.txt` | Manifest: `engine.version=1.24.0`, `engine.minor=19`, entry `native/main.ts`, capabilities platform/storage/clipboard, `server=server.js`, the `control.*` keys and `engine.gamepad.*` defaults. |
 | `native/main.ts` | Entry: lifecycle (start, suspend/resume, quit), actions from keys and pads, clicks and taps on the 3D tiles, the fixed-step clock, the per-frame look. |
 | `native/app.ts` | The controller (what the browser build's `js/game.js` did without the DOM): screen flow, the caller, the bots, marks/claims/hint/undo, lessons, results, achievements, progress, leaderboard posting, Copy Replay, Hosted Play. |
 | `native/screens.ts` | Every screen, the HUD, dialogs and the toast as immediate-mode `starhermit:ui`; the card cells and call chip drawn with `starhermit:draw`; the title's drifting sky lanterns. |

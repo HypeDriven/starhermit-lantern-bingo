@@ -334,7 +334,7 @@ export function applyLook(next: Look): void {
   // hall-post.js GradeShader (linear, before the output): a 0.22 S-curve, saturation 1.1,
   // warm highlights / cool shadows, the s * 0.97 + 0.02 lift with over-range light kept, the 0.26 vignette.
   renderer.grade = next.grade ? {
-    space: "linear", contrast: 0.22, saturation: 1.1,
+    space: "linear", contrastCurve: "s", contrast: 0.22, saturation: 1.1,
     shadows: [0.95, 0.97, 1.06], highlights: [1.05, 1.0, 0.94], split: [0.2, 0.8], levels: [0.97, 0.02], overRange: "keep",
     vignette: { amount: 0.26, inner: 0.3, outer: 0.85 },
   } : null;

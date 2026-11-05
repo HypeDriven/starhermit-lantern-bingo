@@ -289,17 +289,21 @@ the call ball pops; on animated looks the hall's lanterns sway, the ball bobs, i
 rise, sky lanterns drift up the title and the title lantern's glow pulses. The runtime's reduced motion
 stops all of it and shortens the countdown beats from 750 to 500 ms.
 
-**Graphics looks** (`native/quality.ts`, keyed by the runtime's graphics tier; the runtime owns the
-level, render scale, adaptive resolution and frame-rate limit):
+**Graphics looks** (`native/quality.ts`; the runtime owns the level, render scale, adaptive resolution
+and frame-rate limit). Shadows and their map size, AO, bloom, the grade and anti-aliasing are the
+level's own (`levelSettings()`, the engine's table every StarHermit game reads; the table shows each
+tier's anchor level, and levels above an anchor raise them); the art follows the level's tier:
 
 | Tier | Shadows | AO | Bloom / grade | AA | Reflections | Hall lanterns | Motion | Detail | Materials | Floor tex | LOD | Motes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Low | off | off | off | MSAA | off | 12 | still | plain | Lambert | — | ½ | — |
-| Balanced | 512 | off | on | FXAA | RoomEnvironment | 24 | animated | detailed | Standard | 512 | ¾ | 60 |
-| High | 1024 | on | on | SMAA | on | 40 | animated | detailed | Physical (clearcoat) | 512 | 1 | 90 |
-| Ultra | 2048 | high | on | MSAA | on | 40 | animated | detailed | Physical | 1024 | 1.5 | 150 |
+| Balanced | 1024 | off | on | FXAA | RoomEnvironment | 24 | animated | detailed | Standard | 512 | ¾ | 60 |
+| High | 2048 | on (½ res) | on | SMAA | on | 40 | animated | detailed | Physical (clearcoat) | 512 | 1 | 90 |
+| Ultra | 4096 | full res | on | MSAA | on | 40 | animated | detailed | Physical | 1024 | 1.5 | 150 |
 
-Motes grow up to 2× with the level inside a tier. "Detailed" is the old lit-paper/lacquer finish: the
+Low keeps MSAA although the engine's quantum level asks for none: engine 1.36.1's anti-aliasing "off"
+recolours fog and translucent overlays (until engine 1.36.2). Motes grow up to 2× with the level's
+particle budget over the tier's anchor level. "Detailed" is the old lit-paper/lacquer finish: the
 `-lux` button and panel classes, gradient card cells and call chip, ribbed lathe lanterns with caps, the
 textured plank floor, the lacquered board, bevelled glossy tiles, a brass pole. Bloom only takes lantern
 paper and highlights (threshold 2.0); the grade is the old GradeShader in display space with a 0.26

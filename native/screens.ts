@@ -65,21 +65,11 @@ function button(b: Btn, width: number | null = null): void {
   }
   if (ui.style(cls, s).id(b.id).button(b.text, opts)) b.act();
 }
-/** Buttons at their own widths in rows that wrap at `width` (CSS flex-wrap), centred. */
+/** Buttons at their own widths in rows that wrap at `width` (CSS flex-wrap; the engine's wrapping row), centred. */
 function flow(label: string, list: Btn[], width: number, gap = 12): void {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  for (const b of list) {
-    const bw = Math.min(width, buttonWidth(b));
-    if (rows[rows.length - 1]!.length && used + gap + bw > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + bw;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => {
-      for (const b of row) button(b, buttonWidth(b) > width ? width : null);
-    }, { spacing: gap, align: "center" }));
-  }, { spacing: gap, width, align: "center" });
+  ui.row(label, () => {
+    for (const b of list) button(b, buttonWidth(b) > width ? width : null);
+  }, { wrap: true, width, gap, justify: "center", align: "center" });
 }
 /** Buttons in rows of equal width (a menu column, or `perRow` a row). */
 function menu(label: string, list: Btn[], width: number, perRow = 1, gap = 10): void {

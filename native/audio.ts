@@ -11,8 +11,8 @@
 // sound's gain. The synthesized transients the browser build played while a
 // clip was still decoding are not ported (a live synthesis graph makes clip
 // loads fail on the engine's web runtime): a clip still loading is silent,
-// its caption still shows. Clips load once the mixer runs (natively at once,
-// in a browser after the first press), one at a time.
+// its caption still shows. Every clip starts loading at start-up (the mixer
+// takes them before it runs); the hum still waits for it.
 import { context, createClip, loadClip, play as playClip, type AudioClip, type Sound } from "starhermit:audio";
 import { files } from "starhermit:engine";
 import { mulberry32 } from "../js/rules.js";
@@ -28,16 +28,13 @@ const LEVEL = { effects: 0.8, ambience: 0.4 };
 
 const byEvent = new Map<string, string[]>();
 const clips = new Map<string, AudioClip>();
-const queue: string[] = [];
-let loading = false;
-let wantClips = false;
 let suspended = false;
 const variant = mulberry32(20260829 ^ 0xa51ced);
 let captionHook: ((text: string) => void) | null = null;
 /** fn(caption) for each event (the caption line). */
 export function onCaption(fn: (text: string) => void): void { captionHook = fn; }
 
-/** Reads the clip index and asks for the clips; they load once the mixer runs (see update). */
+/** Reads the clip index and loads every clip at once (onStart); a cue whose clip is still loading is skipped. */
 export function loadSfx(): void {
   try {
     const list = files.readJson("sfx/manifest.json") as unknown as { name?: string; event?: string }[];
@@ -48,14 +45,9 @@ export function loadSfx(): void {
       byEvent.set(item.event, l);
     }
   } catch (e) { console.warn(`sfx manifest: ${String(e)}`); }
-  wantClips = true;
-}
-function load(name: string): void { if (!queue.includes(name) && !clips.has(name)) queue.push(name); }
-function pump(): void {
-  if (loading || !queue.length) return;
-  const name = queue.shift()!;
-  loading = true;
-  loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); loading = false; }, (e: unknown) => { console.warn(`sfx ${name}: ${String(e)}`); loading = false; });
+  for (const name of new Set([...byEvent.values()].flat())) {
+    loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${String(e)}`));
+  }
 }
 
 /** Plays an event's sample (once loaded) and writes its caption. */
@@ -68,7 +60,7 @@ export function cue(type: Cue): void {
   const clip = clips.get(name);
   if (!clip || suspended) return;
   try { playClip(clip, { bus: type === "ui" ? "interface" : "effects", gain: LEVEL.effects }); }
-  catch { clips.delete(name); load(name); } // a clip the mixer lost: load it again
+  catch { /* the mixer is full this frame: skip it */ }
 }
 
 // -- the ambience ------------------------------------------------------------------------------
@@ -92,16 +84,9 @@ export function startAmbience(): void { ambienceOn = true; }
 /** A hidden window: everything holds. */
 export function setSuspended(on: boolean): void { suspended = on; }
 
-/** Each frame: the clips once the mixer runs (one at a time), then the ambience bed. */
+/** Each frame once the mixer runs: the ambience bed. */
 export function update(): void {
   if (context.state !== "running") return;
-  if (wantClips) {
-    wantClips = false;
-    for (const names of byEvent.values()) for (const n of names) load(n);
-    return;
-  }
-  pump();
-  if (loading || queue.length) return;
   try {
     if (!bed) { bed = ambienceClip(); return; }
     const want = ambienceOn && !suspended;

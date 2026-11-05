@@ -286,7 +286,7 @@ export function applyLook(next: Look): void {
   const shadows = next.shadows > 0;
   renderer.shadowMap.enabled = shadows;
   key.castShadow = shadows;
-  if (shadows) key.shadow.mapSize = next.shadows;
+  if (shadows) key.shadow.mapSize = next.shadows; // the level's size (the engine keeps the game's at minor 23+)
   const detailed = next.detailed;
   buildLanterns();
   // Surface detail: textured floor, lacquered board, bevelled glossy tiles, brass pole, glossy ball.
@@ -324,13 +324,13 @@ export function applyLook(next: Look): void {
   }
   scene.environment = next.reflections ? envTex : null;
   scene.environmentIntensity = 0.22;
-  const hi = next.ao === "high";
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: 0.7, radius: 0.5, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: hi ? 16 : 8, resolution: b.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: hi ? 16 : 8, radiusExponent: 2 },
+  const ao = next.ao, hi = !!ao && ao.resolution >= 1; // full-resolution AO: the old "high"
+  renderer.ao = ao && {
+    blendIntensity: 0.7, radius: 0.5, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // High threshold: only lantern paper, the ball's lit face and highlights bloom (UnrealBloomPass 0.45, 0.25, 2.0).
-  renderer.bloom = next.bloom ? { strength: 0.45, radius: 0.25, threshold: 2.0, resolution: b.bloomRes } : null;
+  renderer.bloom = next.bloom === null ? null : { strength: 0.45, radius: 0.25, threshold: 2.0, resolution: next.bloom };
   // hall-post.js GradeShader (linear, before the output): a 0.22 S-curve, saturation 1.1,
   // warm highlights / cool shadows, the s * 0.97 + 0.02 lift with over-range light kept, the 0.26 vignette.
   renderer.grade = next.grade ? {

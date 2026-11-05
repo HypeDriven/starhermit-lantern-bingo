@@ -6,7 +6,7 @@
 // server.js (js/hosted.js); the controller is app.ts, the screens and HUD
 // starhermit:ui (screens.ts), the lantern hall starhermit:scene (render.ts),
 // saves, options and the platform platform.ts.
-import { frame, onFixedUpdate, onPreferencesChange, onQuit, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { frame, levelSettings, onFixedUpdate, onPreferencesChange, onQuit, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
 import { onAction, onPointerButton, onTouch } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import * as A from "./app.ts";
@@ -110,10 +110,10 @@ function handlePointer(): void {
 let lookKey = "";
 function applyLook(): void {
   const f = frame();
-  const key = `${f.quality}:${f.levelIndex}`;
+  const key = f.level;
   if (key === lookKey) return;
   lookKey = key;
-  const look = lookFor(f.quality, f.levelIndex);
+  const look = lookFor(levelSettings(f.level));
   setLook(look);
   render.applyLook(look);
 }

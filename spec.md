@@ -299,10 +299,7 @@ tier's anchor level, and levels above an anchor raise them); the art follows the
 | Low | off | off | off | MSAA | off | 12 | still | plain | Lambert | — | ½ | — |
 | Balanced | 1024 | off | on | FXAA | RoomEnvironment | 24 | animated | detailed | Standard | 512 | ¾ | 60 |
 | High | 2048 | on (½ res) | on | SMAA | on | 40 | animated | detailed | Physical (clearcoat) | 512 | 1 | 90 |
-| Ultra | 4096 | full res | on | MSAA | on | 40 | animated | detailed | Physical | 1024 | 1.5 | 150 |
-
-Low keeps MSAA although the engine's quantum level asks for none: engine 1.36.1's anti-aliasing "off"
-recolours fog and translucent overlays (until engine 1.36.2). Motes grow up to 2× with the level's
+| Ultra | 4096 | full res | on | MSAA | on | 40 | animated | detailed | Physical | 1024 | 1.5 | 150 | Motes grow up to 2× with the level's
 particle budget over the tier's anchor level. "Detailed" is the old lit-paper/lacquer finish: the
 `-lux` button and panel classes, gradient card cells and call chip, ribbed lathe lanterns with caps, the
 textured plank floor, the lacquered board, bevelled glossy tiles, a brass pole. Bloom only takes lantern

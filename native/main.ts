@@ -12,7 +12,7 @@ import * as ui from "starhermit:ui";
 import * as A from "./app.ts";
 import { app } from "./app.ts";
 import * as audio from "./audio.ts";
-import { initLanguage } from "./i18n.ts";
+import "./i18n.ts";
 import * as platform from "./platform.ts";
 import { lookFor } from "./quality.ts";
 import * as render from "./render.ts";
@@ -23,7 +23,6 @@ const STEP_MS = 1000 / 60;
 
 onStart(() => {
   setFixedRate(60);
-  initLanguage();
   initStyles();
   platform.initPlatform();
   platform.onOptionsChange(() => A.syncHall());
@@ -127,7 +126,6 @@ onUpdate((dt) => {
   applyLook();
   audio.update();
   applyContrast(ui.preferences().highContrast);
-  if (app.toast && app.toast.until < frame().time) app.toast = null;
 });
 onRender(() => {
   drawScreens();

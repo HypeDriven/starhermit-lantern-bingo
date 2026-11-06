@@ -35,7 +35,7 @@ pattern close, and slam CLAIM before the other lanterns do.
 | `js/rules.js`, `js/session.js`, `js/content.js` | Pure rules, the session (log, undo, replay envelope, `verifyReplay`), content (themes, lessons, 40 Journey stages, challenges, `dailyFor`, validator). Unchanged from the browser build. |
 | `js/hosted.js` | `HallClient`: the hosted hall's lobby (a realtime room) and its bound session's game socket. |
 | `js/progress.js`, `js/save-merge.js` | The save document, its normalization and merge, reading the old cloud save, the game's options' checks. |
-| `js/i18n.js`, `js/locales/`, `js/sh-strings.js` | `T`/`N` and the nine locales keyed by the US-English text; the account strings. |
+| `assets/strings.json`, `native/i18n.ts` | `T`/`N` and the nine locales keyed by the US-English text (engine `strings`); the account lines are the engine's `starhermit.*`. |
 | `server.js` | The server script: hosted-hall referee and solo score posting (§12). Its RULES block is written from `js/rules.js` + `js/content.js` by `tools/build-server.mjs`. |
 | `assets/ui-style.json` | `tools/ui-style.css` converted with `starhermit css` (`npm run css`). |
 | `assets/`, `sfx/`, `cover.jpg`, `icon.png` | Key art, 18 Opus one-shots + `manifest.json`, cover and icon. |
@@ -296,7 +296,7 @@ tier's anchor level, and levels above an anchor raise them); the art follows the
 
 | Tier | Shadows | AO | Bloom / grade | AA | Reflections | Hall lanterns | Motion | Detail | Materials | Floor tex | LOD | Motes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Low | off | off | off | MSAA | off | 12 | still | plain | Lambert | — | ½ | — |
+| Low | off | off | off | off | off | 12 | still | plain | Lambert | — | ½ | — |
 | Balanced | 1024 | off | on | FXAA | RoomEnvironment | 24 | animated | detailed | Standard | 512 | ¾ | 60 |
 | High | 2048 | on (½ res) | on | SMAA | on | 40 | animated | detailed | Physical (clearcoat) | 512 | 1 | 90 |
 | Ultra | 4096 | full res | on | MSAA | on | 40 | animated | detailed | Physical | 1024 | 1.5 | 150 | Motes grow up to 2× with the level's
@@ -311,7 +311,7 @@ as the results banner (hidden on short landscape and under high contrast).
 
 ## 9. Audio direction
 
-Each event plays one of its two authored one-shots (`sfx/manifest.json`, variant from a seeded RNG):
+Each event plays one of its two authored one-shots (`sfx/manifest.json`, variant from a `SoundBank`, which never repeats the last one):
 `ui`, `call`, `mark`, `invalid`, `line`, `win`, `lose`, `tick`, `go`, `achievement` (the event table and
 sources are in `sfx/manifest.md`). Under the game a quiet lantern hum (110 + 165 Hz sines at 0.05) loops
 from the first press. Menu taps play on the runtime's interface bus, everything else on effects; Options
@@ -322,8 +322,8 @@ round won`, …) under the status line, so the audio reads with sound off.
 ## 10. Localization
 
 Every player-facing string is localized in en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and
-it-IT: code calls `T('<US-English text>', vars)` (`js/i18n.js`, catalogues in `js/locales/` keyed by the
-English text; es-ES and fr-CA list their differences). The language is the runtime's interface language
+it-IT: code calls `T('<US-English text>', vars)` (`native/i18n.ts`, tables in `assets/strings.json` keyed by the
+English text). The language is the runtime's interface language
 (Options › Language, else the account's or the device's), mapped to the nearest shipped locale, and a
 change shows on the next frame. Content names (patterns, lessons, challenges, themes, achievements,
 captions) stay English data and translate where shown; rule refusal codes map to sentences.

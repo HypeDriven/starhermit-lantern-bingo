@@ -25,7 +25,7 @@ import { Session } from "../js/session.js";
 import { CHALLENGES, CONTENT_VERSION, JOURNEY_STAGES, LESSONS, dailyFor } from "../js/content.js";
 import { HallClient } from "../js/hosted.js";
 import * as audio from "./audio.ts";
-import { N, T, shT } from "./i18n.ts";
+import { N, T, account } from "./i18n.ts";
 import * as platform from "./platform.ts";
 import * as render from "./render.ts";
 
@@ -94,7 +94,6 @@ export const app = {
   helpReturnPause: false,
   hall: null as HallClient | null,
   hallError: null as string | null,
-  toast: null as { text: string; until: number } | null,
   focusCell: CENTER,
 };
 const achievementCtx = { linesTotal: 0, winStreak: 0 };
@@ -110,7 +109,12 @@ export function announce(key: string, vars?: Record<string, string | number>, as
   const text = T(key, vars);
   if (text) ui.announce(text.slice(0, 500), { politeness: assertive ? "assertive" : "polite" });
 }
-export function toast(text: string, ms = 3200): void { app.toast = { text, until: frame().time + ms / 1000 }; }
+let shownToast: ui.Toast | null = null;
+/** One at a time, at the top of the window; a press still reaches what is under it. */
+export function toast(text: string, ms = 3200): void {
+  shownToast?.dismiss();
+  shownToast = ui.toast!(text, { duration: ms / 1000, style: "toast", dismissible: false, position: "top" });
+}
 function setPhase(p: Phase): void {
   app.phase = p;
   setStatus(PHASE_TEXT[p] || p);
@@ -482,10 +486,9 @@ function postToLeaderboard(total: number | null): void {
 export function leaderboardLine(): string | null {
   const lb = app.lb;
   if (!lb) return null;
-  const sh = shT();
-  if (lb === "posting") return sh.lbPosting;
-  if (!lb.posted) return sh.lbNotPosted;
-  return lb.rank ? sh.lbRank.replace("{rank}", String(lb.rank)) : sh.lbPosted;
+  if (lb === "posting") return account("leaderboardPosting");
+  if (!lb.posted) return account("leaderboardNotPosted");
+  return lb.rank ? account("leaderboardRank", { rank: lb.rank }) : account("leaderboardPosted");
 }
 function nextRecommendation(): string {
   const prog = platform.progress();
@@ -673,7 +676,7 @@ export function startHosted(): void {
       cue("invalid");
     },
     onUnavailable: (): void => { if (app.hall) { leaveHosted(); if (app.screen === "play" || app.screen === "hall") { abandonRound(); show("hall", "btn-hall-back"); } hostedFail(); } },
-    onAuthLost: (): void => { leaveHosted(); abandonRound(); toast(shT().signedOut); },
+    onAuthLost: (): void => { leaveHosted(); abandonRound(); toast(account("signedOut")); },
   };
   void HallClient.open(platform.roomsAdapter, hooks).then((res: { ok: boolean; client?: HallClient; error?: string }) => {
     if (app.screen !== "hall") { res.client?.leave(); return; }
@@ -764,11 +767,11 @@ export function copyInvite(): void {
   cue("ui");
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); toast(shT().copied); }
-  catch { toast(shT().copyFailed); }
+  try { clipboard.writeText(link); toast(account("inviteCopied")); }
+  catch { toast(account("inviteFailed")); }
 }
 export function signIn(): void { cue("ui"); void requestSignIn().catch(() => undefined); }
-platform.onPlayer((signedIn) => { if (!signedIn) toast(shT().signedOut); });
+platform.onPlayer((signedIn) => { if (!signedIn) toast(account("signedOut")); });
 
 /** The title line under the menu. */
 export function titleProgress(): string {
@@ -782,7 +785,7 @@ export function accountLine(): string | null {
   if (!platform.signedIn()) return null;
   const st = platform.syncState();
   const status = T(st === "synced" ? N("cloud save synced") : st === "saving" ? N("saving…") : N("cloud save offline"));
-  return `${shT().playingAs.replace("{name}", platform.displayName() || "…")} · ${status}`;
+  return `${T("Playing as {name}", { name: platform.displayName() || "…" })} · ${status}`;
 }
 export { CELLS, GRID, CENTER, LESSONS, CHALLENGES, JOURNEY_STAGES, hashState, countLines };
 

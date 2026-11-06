@@ -14,16 +14,15 @@
 //   the option, then removed. Volumes, mute, graphics, language, reduced
 //   motion, high contrast and text size are the runtime's Options;
 // - the player, the invite link, the platform's clock (the Daily Lantern's
-//   UTC day), and a finished solo round's total posted through server.js (a
-//   practice session whose socket carries { type: 'result', scores }, as the
-//   JS SDK's submitScores did; the script range-checks it) with the rank;
+//   UTC day), and a finished solo round's total posted through server.js
+//   (leaderboards.submitScore; the script range-checks it) with the rank;
 // - hosted halls: realtime rooms for the lobby and the session the platform
 //   binds to a started room, refereed by server.js (`roomsAdapter` gives
 //   js/hosted.js that surface).
 import type { JsonValue } from "starhermit:engine";
 import {
-  connectGame, inviteLink as fetchInviteLink, leaderboards, onPlayerChange, player, rooms, serverNow, serverTime, sessions,
-  type GameSocket, type Leaderboard, type Room, type RoomSocket,
+  connectGame, inviteLink as fetchInviteLink, leaderboards, onPlayerChange, player, rooms, serverNow, serverTime,
+  type GameSocket, type Room, type RoomSocket,
 } from "starhermit:platform";
 import { saves, settings as store } from "starhermit:storage";
 import * as ProgressJs from "../js/progress.js";
@@ -172,7 +171,6 @@ export function onPlayer(fn: (signedIn: boolean) => void): void { playerListener
 let wasSignedIn = false;
 function refreshPlayer(): void {
   invite = null;
-  board = null;
   const now = !!player();
   if (wasSignedIn !== now) for (const fn of playerListeners) fn(now);
   wasSignedIn = now;
@@ -189,52 +187,15 @@ export function nowMs(): number {
 export function todayIso(): string { return new Date(nowMs()).toISOString().slice(0, 10); }
 
 // --- the StarHermit high-score board ------------------------------------------------------
-let board: Leaderboard | null = null;
-async function highScoreBoard(): Promise<Leaderboard | null> {
-  if (board) return board;
-  const list = await leaderboards.list();
-  board = list.find((b) => b.key === "high-score") ?? null;
-  return board;
-}
 export interface Posted { posted: boolean; rank: number | null }
 
 /** Signed in only: posts a finished solo round's total through server.js; never rejects. */
 export async function postScore(total: number): Promise<Posted> {
-  const me = player();
-  if (!me) return { posted: false, rank: null };
-  const score = Math.max(0, Math.round(total));
-  let accepted: string[] = [];
+  if (!player()) return { posted: false, rank: null };
   try {
-    const sessionId = await sessions.practice();
-    accepted = await new Promise<string[]>((resolve) => {
-      const socket = connectGame(sessionId);
-      let done = false;
-      const finish = (v: string[]): void => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        socket.close();
-        resolve(v);
-      };
-      const timer = setTimeout(() => finish([]), 15000);
-      socket.on("open", () => { socket.sendCommand({ type: "result", scores: { "high-score": score } }); });
-      socket.on("game", (data) => {
-        const d = data as { type?: string; accepted?: string[] } | null;
-        if (d && d.type === "result-ack") finish(Array.isArray(d.accepted) ? d.accepted : []);
-      });
-      socket.on("error", () => finish([]));
-      socket.on("stopped", () => finish([]));
-      socket.on("abandoned", () => finish([]));
-    });
+    const r = await leaderboards.submitScore("high-score", Math.max(0, Math.round(total)));
+    return { posted: r.accepted, rank: r.rank };
   } catch { return { posted: false, rank: null }; }
-  if (!accepted.includes("high-score")) return { posted: false, rank: null };
-  try {
-    const b = await highScoreBoard();
-    if (!b) return { posted: true, rank: null };
-    const r = await leaderboards.entries(b.id, { pageSize: 100 });
-    const mine = r.items.find((e) => e.userId === me.userId);
-    return { posted: true, rank: mine ? mine.rank : null };
-  } catch { return { posted: true, rank: null }; }
 }
 
 // --- hosted halls: realtime rooms ---------------------------------------------------------

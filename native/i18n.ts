@@ -1,39 +1,27 @@
-// Localization: the browser build's dictionaries (js/locales/*.js through
-// js/i18n.js, US-English text as the keys, the nine StarHermit locales) and
-// its account strings (js/sh-strings.js) in the interface language the
-// runtime reports (preferences().language: the player's choice in Options ›
-// Language, else the account's preferred language or the device's), mapped
-// to the nearest shipped locale. The runtime's Options replaced the game's
-// own Language selector (sh-language.js) and its ?lang= override. A change
-// shows on the next frame (the UI is immediate mode).
-import { onPreferencesChange, preferences } from "starhermit:engine";
+// Localization: the engine's string tables (assets/strings.json: US-English
+// text as the keys, the nine StarHermit locales) in the interface language the
+// runtime reports (the player's choice in Options › Language, else the
+// account's preferred language or the device's). The runtime's Options replaced
+// the game's own Language selector (sh-language.js) and its ?lang= override. A
+// change shows on the next frame (the UI is immediate mode). The account lines
+// are the engine's `starhermit.*` keys.
+import { strings } from "starhermit:engine";
 import * as ui from "starhermit:ui";
-import { T as translate, setLocale } from "../js/i18n.js";
-import { pickLocale, shStrings } from "../js/sh-strings.js";
 
-let locale = "";
-function apply(tag: string): void {
-  const next = pickLocale([tag]) as string;
-  if (next === locale) return;
-  locale = next;
-  setLocale(locale);
-  ui.setLanguage(locale);
-}
-/** Wires the language (from onStart). */
-export function initLanguage(): void {
-  apply(preferences().language);
-  onPreferencesChange((p) => apply(p.language));
-}
-export function currentLocale(): string { return locale || "en-US"; }
+strings.load("assets/strings.json");
+strings.defaultLocale = "en-US";
+ui.setLanguage(strings.locale);
+strings.onChange((locale) => ui.setLanguage(locale));
 
 type Vars = Record<string, string | number>;
-/** An English source string in the player's language; `{name}` placeholders from vars. */
-export function T(key: string, vars?: Vars | null): string { return translate(key, vars ?? undefined); }
+/** An English source string in the player's language; `{name}` placeholders from vars. Text with no entry (a player's name) passes through. */
+export function T(key: string, vars?: Vars | null): string {
+  if (key == null) return "";
+  const k = String(key);
+  if (strings.has(k)) return strings.t(k, vars ?? undefined);
+  return vars ? k.replace(/\{(\w+)\}/g, (m, n: string) => (vars[n] != null ? String(vars[n]) : m)) : k;
+}
 /** Marks an English key that is translated with T() where it is shown. */
 export const N = (s: string): string => s;
-export interface ShStrings {
-  signIn: string; invite: string; copied: string; copyFailed: string; signedOut: string; playingAs: string;
-  lbPosting: string; lbRank: string; lbPosted: string; lbNotPosted: string;
-}
-/** The account lines (sign-in, invite, the signed-out toast, the leaderboard line). */
-export function shT(): ShStrings { return shStrings([currentLocale()]) as ShStrings; }
+/** An account or leaderboard line: the engine's `starhermit.*` strings. */
+export function account(key: string, vars?: Vars): string { return strings.t(`starhermit.${key}`, vars); }

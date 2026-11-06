@@ -23,7 +23,7 @@ import { CHALLENGES, JOURNEY_STAGES, LESSONS, THEMES } from "../js/content.js";
 import { HALL_SEATS } from "../js/hosted.js";
 import * as A from "./app.ts";
 import { app, type Stage } from "./app.ts";
-import { N, T, shT } from "./i18n.ts";
+import { N, T, account } from "./i18n.ts";
 import * as platform from "./platform.ts";
 import { TITLE_LANTERNS, type Look } from "./quality.ts";
 import * as render from "./render.ts";
@@ -32,10 +32,8 @@ import { ink } from "./style.ts";
 // ------------------------------------------------------------------ layout helpers
 interface Layout { lw: number; lh: number; sc: number; ox: number; oy: number }
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  return { lw: Math.max(1, (f.width - sa.left - sa.right) / sc), lh: Math.max(1, (f.height - sa.top - sa.bottom) / sc), sc, ox: sa.left / sc, oy: sa.top / sc };
+  const v = ui.viewport!();
+  return { lw: Math.max(1, v.width), lh: Math.max(1, v.height), sc: v.scale, ox: v.x, oy: v.y };
 }
 const lastHeight = new Map<string, number>();
 const pr = (): ui.UiPreferences => ui.preferences();
@@ -122,7 +120,6 @@ export function drawScreens(): void {
     case "hall": hallScreen(L, top); break;
   }
   dialogs(L);
-  toast(L);
   render.setView(app.screen === "play" ? hallView : null, f.width, f.height);
   const opened = app.modal ? app.modalOpened : app.openedFrame;
   if (app.focusNext) {
@@ -248,8 +245,8 @@ function titleScreen(L: Layout, top: number): void {
     { id: "btn-help", text: T("Help"), act: () => A.nav("help") },
   ];
   const acct: Btn[] = [];
-  if (!platform.signedIn()) acct.push({ id: "btn-signin", text: shT().signIn, act: A.signIn });
-  if (platform.inviteLink()) acct.push({ id: "btn-invite", text: shT().invite, act: A.copyInvite });
+  if (!platform.signedIn()) acct.push({ id: "btn-signin", text: account("signIn"), act: A.signIn });
+  if (platform.inviteLink()) acct.push({ id: "btn-invite", text: account("invite"), act: A.copyInvite });
   const h = lastHeight.get("title") ?? 0;
   const avail = ph;
   const build = (): void => {
@@ -777,7 +774,7 @@ function hallScreen(L: Layout, top: number): void {
       const iw = w - 44;
       if (!platform.signedIn()) {
         para(T("Hosted play is unavailable right now. Try Practice instead."), iw);
-        flow("hall-signin", [{ id: "btn-hall-signin", text: shT().signIn, primary: true, act: A.signIn }], iw);
+        flow("hall-signin", [{ id: "btn-hall-signin", text: account("signIn"), primary: true, act: A.signIn }], iw);
       } else if (!h) {
         para(A.textOf(app.status), iw, "muted", "hall-status");
       } else {
@@ -843,14 +840,4 @@ function dialogs(L: Layout): void {
   if (!open && !fresh && app.modal === m) A.closeModal();
 }
 
-// ------------------------------------------------------------------ toast
-function toast(L: Layout): void {
-  const t = app.toast;
-  if (!t) return;
-  const w = Math.min(L.lw * 0.92, 420);
-  ui.place("toast", { anchor: "top", y: 8 }, () => {
-    if (textWidth(t.text, "toast") + 36 <= w) ui.style("toast").id("toast").label(t.text);
-    else ui.style("toast", { text: { align: "center" } }).id("toast").paragraph(t.text, w - 36);
-  });
-}
 void PATTERNS;

@@ -3,10 +3,13 @@
 // content tables (see tests/i18n-keys.mjs).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DICTS, LOCALES, T, setLocale } from '../js/i18n.js';
-import { shStrings } from '../js/sh-strings.js';
+import { readFileSync } from 'node:fs';
 import { ALL } from './i18n-keys.mjs';
 
+const DICTS = JSON.parse(readFileSync(new URL('../assets/strings.json', import.meta.url), 'utf8'));
+const LOCALES = Object.keys(DICTS);
+const PARENT = { 'en-GB': 'en-US' };
+const T = (l, k) => { for (let c = l; c; c = PARENT[c]) if (Object.hasOwn(DICTS[c], k)) return DICTS[c][k]; return k; };
 const placeholders = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
 test('the key set is non-trivial', () => {
@@ -30,13 +33,6 @@ test('no locale carries keys that no longer exist', () => {
   }
 });
 
-test('the StarHermit account strings exist in all nine locales', () => {
-  for (const locale of LOCALES) {
-    const sh = shStrings([locale]);
-    for (const k of ['signIn', 'invite', 'copied', 'copyFailed', 'signedOut', 'playingAs', 'lbPosting', 'lbRank', 'lbPosted', 'lbNotPosted']) assert.ok(sh[k], locale + ' ' + k);
-  }
-});
-
 test('rich-text keys keep their inline markup in every locale', () => {
   const tags = (s) => (String(s).match(/<[^>]+>/g) || []).join('');
   for (const locale of LOCALES.filter((l) => l !== 'en-US')) {
@@ -44,16 +40,11 @@ test('rich-text keys keep their inline markup in every locale', () => {
   }
 });
 
-test('T falls back to the key and fills placeholders; regional variants inherit', () => {
-  setLocale('de-DE');
-  assert.equal(T('Not a real key {x}', { x: 1 }), 'Not a real key 1');
-  assert.equal(T('Stage {n}', { n: 2 }), 'Etappe 2');
-  setLocale('fr-CA');
-  assert.equal(T('Scoring'), 'Pointage');
-  assert.equal(T('Hall'), 'Salle'); // inherited from fr-FR
-  setLocale('es-ES');
-  assert.equal(T('Settings'), 'Ajustes');
-  assert.equal(T('Hall'), 'Sala');
-  setLocale('en-US');
-  assert.equal(T('Hall'), 'Hall');
+test('regional variants read their own or the shared text', () => {
+  assert.equal(T('de-DE', 'Stage {n}'), 'Etappe {n}');
+  assert.equal(T('fr-CA', 'Scoring'), 'Pointage');
+  assert.equal(T('fr-CA', 'Hall'), 'Salle');
+  assert.equal(T('es-ES', 'Settings'), 'Ajustes');
+  assert.equal(T('es-ES', 'Hall'), 'Sala');
+  assert.equal(T('en-US', 'Hall'), 'Hall');
 });

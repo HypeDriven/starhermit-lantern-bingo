@@ -16,12 +16,13 @@
 // view sits in its rectangle through setViewOffset, as the old canvas sat
 // between the page's other elements.
 import {
-  ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, CylinderGeometry,
+  ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferGeometry, CanvasTexture, Color, CylinderGeometry,
   DirectionalLight, ExtrudeGeometry, Fog, HemisphereLight, InstancedMesh, LatheGeometry, Mesh, MeshLambertMaterial,
-  MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PMREMGenerator, PointLight, Points, PointsMaterial,
+  MeshPhysicalMaterial, MeshStandardMaterial, Object3D, ParticleEmitter, PerspectiveCamera, PMREMGenerator, PointLight, PointsMaterial,
   Raycaster, RepeatWrapping, RoomEnvironment, Shape, SphereGeometry, SRGBColorSpace, Vector2, Vector3, pointerToNdc, renderer, scene,
   type Material, type Texture,
 } from "starhermit:scene";
+import { frame } from "starhermit:engine";
 import { OffscreenCanvas } from "starhermit:canvas";
 import { THEMES } from "../js/content.js";
 import { LANTERN_COUNT, type Look } from "./quality.ts";
@@ -70,18 +71,8 @@ function hallMaterial(kind: string, params: Record<string, unknown>, phys?: Reco
   return new MeshStandardMaterial(params);
 }
 const MOTE_CAP = 300;
-/** Warm dust motes spread deterministically through the hall (drawn `n` of them). */
-function moteGeometry(): BufferGeometry {
-  const pos = new Float32Array(MOTE_CAP * 3);
-  for (let i = 0; i < MOTE_CAP; i++) {
-    pos[i * 3] = ((i * 73) % 100) / 100 * 12 - 6;
-    pos[i * 3 + 1] = ((i * 37) % 100) / 100 * 5;
-    pos[i * 3 + 2] = ((i * 53) % 100) / 100 * 6 - 3.5;
-  }
-  const geo = new BufferGeometry();
-  geo.setAttribute("position", new BufferAttribute(pos, 3));
-  return geo;
-}
+/** Motes rise 5 units at 0.24 a second, then start again at the floor. */
+const MOTE_LIFE = 5 / 0.24;
 /** Rounded, bevelled card tile (lies flat, top face at y = 0.08); `k` is the geometry LOD. */
 function tileGeometry(k: number): BufferGeometry {
   const s = 0.29, r = 0.08;
@@ -166,8 +157,9 @@ for (let i = 0; i < CELLS; i++) {
   m.userData = { cell: i };
   cells.push(m);
 }
-const moteGeo = moteGeometry();
-const motes = new Points(moteGeo, new PointsMaterial({ color: 0xffc98a, size: 0.05, transparent: true, opacity: 0.6, depthWrite: false, blending: AdditiveBlending }));
+const motes = new ParticleEmitter({ capacity: MOTE_CAP, material: new PointsMaterial({ color: 0xffc98a, size: 0.05, transparent: true, opacity: 0.6, depthWrite: false, blending: AdditiveBlending }), seed: 0x1a27, space: "local", shape: "box", extent: [6, 0, 3] });
+motes.frustumCulled = false;
+motes.position.set(0, 0, -0.5);
 motes.renderOrder = -10;
 scene.add(floor, board, ball, pole, ...cells, motes);
 
@@ -180,6 +172,26 @@ let lanternColor = theme.lantern;
 let floorTex: Texture | null = null;
 let envTex: Texture | null = null;
 let reducedMotion = false;
+let moteWarmIn = 0;
+let motesBorn = 0;
+/** The look's dust: rising through the hall from the first frame, or held still under reduced motion. */
+function setMotes(): void {
+  const n = look?.animated ? Math.min(MOTE_CAP, look.budget.motes) : 0;
+  motes.visible = n > 0;
+  motes.clear();
+  moteWarmIn = 0;
+  if (!n) { motes.rate = 0; return; }
+  if (reducedMotion) {
+    motes.position.y = 2.5;
+    motes.set({ extent: [6, 2.5, 3], velocity: [0, 0, 0], velocitySpread: 0, life: 3600, rate: 0 });
+    motes.burst(n);
+    motesBorn = frame().time;
+    return;
+  }
+  motes.position.y = 0;
+  motes.set({ extent: [6, 0, 3], velocity: [0, 0.24, 0], velocitySpread: 0, life: MOTE_LIFE, rate: n / MOTE_LIFE });
+  moteWarmIn = 2;
+}
 let budgetKey = "";
 let marksKey = "";
 
@@ -308,7 +320,7 @@ export function applyLook(next: Look): void {
   const pm = pole.material as MeshStandardMaterial;
   pm.color.setHex(detailed ? 0xb08d57 : 0x554433);
   if ("metalness" in pm) { pm.metalness = detailed ? 0.85 : 0; pm.roughness = detailed ? 0.32 : 0.8; }
-  motes.visible = next.animated;
+  setMotes();
   ballLightBase = detailed ? 14 : 30;
   ballLight.intensity = ballLightBase;
   ballLight.position.set(0, detailed ? 4.2 : 3.4, detailed ? 2.6 : 1.5);
@@ -364,7 +376,11 @@ export function setView(rect: { x: number; y: number; w: number; h: number } | n
 let winW = 0, winH = 0;
 function sync(): void { renderer.camera = active && view ? camera : null; }
 export function hallRect(): { x: number; y: number; w: number; h: number } | null { return active ? view : null; }
-export function setReducedMotion(on: boolean): void { reducedMotion = on; }
+export function setReducedMotion(on: boolean): void {
+  if (reducedMotion === on) return;
+  reducedMotion = on;
+  setMotes();
+}
 export function resetCamera(): void {
   camera.position.copy(cameraHome);
   camera.lookAt(cameraLook);
@@ -430,17 +446,8 @@ export function update(dtIn: number): void {
     ball.position.y = 2.6 + Math.sin(t * 1.1) * 0.04;
     ball.rotation.y = -PI / 2 + Math.sin(t * 0.4) * 0.12;
     ballLight.intensity = ballLightBase * (0.94 + 0.06 * Math.sin(t * 7.3) * Math.sin(t * 3.1));
-    const n = Math.min(MOTE_CAP, look.budget.motes);
-    moteGeo.setDrawRange(0, n);
-    const p = moteGeo.getAttribute("position") as BufferAttribute;
-    const arr = p.array as Float32Array;
-    for (let i = 0; i < n; i++) {
-      let y = arr[i * 3 + 1]! + 0.004 * dt * 60;
-      if (y > 5) y = 0;
-      arr[i * 3 + 1] = y;
-    }
-    p.needsUpdate = true;
-  }
+    if (moteWarmIn > 0 && --moteWarmIn === 0) motes.prewarm(MOTE_LIFE);
+  } else if (reducedMotion && motes.visible && frame().time - motesBorn > 3540) setMotes();
   if (ballPop > 0) {
     ballPop = Math.max(0, ballPop - 0.04 * dt * 60);
     ball.scale.setScalar(1 + Math.sin(ballPop * PI) * 0.25);

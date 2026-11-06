@@ -42,7 +42,7 @@ export function initStyles(): void {
     select: {
       text: { color: "$ink" },
       parts: {
-        field: { background: "$panel-2", radius: 6, padding: { top: 6, end: 10, bottom: 6, start: 10 }, minHeight: 40 },
+        field: { background: "$panel-2", radius: 6, padding: { top: 6, end: 10, bottom: 6, start: 10 } },
         list: { background: "$panel", radius: 8, border: { width: 1, color: "$accent-2" } },
         option: { hovered: { background: "$panel-3" }, selected: { text: { color: "$accent" } } },
       },

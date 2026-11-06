@@ -701,7 +701,7 @@ function selectRow(id: string, label: string, inner: number, cur: number, option
   ui.row(`${id}-row`, () => {
     para(label, Math.max(60, inner * 0.38));
     ui.spacer();
-    const next = ui.style({ width: Math.min(240, inner * 0.6) }).id(id).select(label, cur, options);
+    const next = ui.id(id).select(label, cur, options);
     if (next !== cur) onPick(next);
   }, { width: inner, align: "center", spacing: 10 });
 }

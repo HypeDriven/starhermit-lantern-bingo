@@ -1,3 +1,7 @@
+import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
+import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
+// localization-runtime:attached
+import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
 // The browser build's DOM shell (index.html + css/style.css) as
 // starhermit:ui, built every frame: the top bar (the title, the status line
 // that names the phase in words, the audio captions) over every screen; the
@@ -13,7 +17,22 @@
 // media queries are layouts picked by the window's logical size: wide
 // (≥ 1024: rails beside the card), stacked (rails above and below) and short
 // landscape (≤ 500 tall: narrow rails beside the card, no title during play).
-import { frame, openMenu } from "starhermit:engine";
+// The browser build's DOM shell (index.html + css/style.css) as
+// starhermit:ui, built every frame: the top bar (the title, the status line
+// that names the phase in words, the audio captions) over every screen; the
+// title over the lantern-hall key art with the drifting sky lanterns and the
+// lantern hero, its nine-button menu, the progress and account lines and the
+// Sign in / Invite buttons; Mode Setup; the Journey and Learn lists; the
+// round (the objective rail, the call chip with the caller's line, the 5×5
+// card, the hint line, the 3D hall under the card on tall desktop windows,
+// the Hall roster rail and the action tray); Results with the key-art
+// banner, the breakdown, ranking, achievements and the pinned Retry / Copy
+// Replay / Continue row; Settings, How to Play, the hosted hall's lobby; the
+// pause, Practice, Challenge and reset dialogs; and the toast. The browser's
+// media queries are layouts picked by the window's logical size: wide
+// (≥ 1024: rails beside the card), stacked (rails above and below) and short
+// landscape (≤ 500 tall: narrow rails beside the card, no title during play).
+import { frame } from "starhermit:engine";
 import { bindingLabel, requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
@@ -56,12 +75,12 @@ function button(b: Btn, width: number | null = null): void {
   if (b.disabled) opts.disabled = true;
   const s: ui.Style = width != null ? { width } : {};
   if (b.kbd) {
-    opts.content = () => ui.row(`${b.id}-face`, () => { ui.label(b.text); ui.style("kbd").label(b.kbd!); }, { spacing: 6, align: "center" });
+    opts.content = () => ui.row(`${b.id}-face`, () => { ui.label(b.text); ui.style(__l10nStyle("kbd")).label(b.kbd!); }, { spacing: 6, align: "center" });
   } else if (width != null && buttonWidth(b) > width) {
     const inner = Math.max(20, width - 36);
-    opts.content = () => { ui.style({ text: { align: "center" } }).paragraph(b.text, inner); };
+    opts.content = () => { ui.style(__l10nStyle({ text: { align: "center" } })).paragraph(b.text, inner); };
   }
-  if (ui.style(cls, s).id(b.id).button(b.text, opts)) b.act();
+  if (ui.style(__l10nStyle(cls), __l10nStyle(s)).id(b.id).button(b.text, opts)) b.act();
 }
 /** Buttons at their own widths in rows that wrap at `width` (CSS flex-wrap; the engine's wrapping row), centred. */
 function flow(label: string, list: Btn[], width: number, gap = 12): void {
@@ -84,7 +103,7 @@ function para(text: string, width: number, cls = "body", id?: string, center = f
   if (!text) return;
   const styles: (string | ui.Style)[] = [cls];
   if (center) styles.push({ text: { align: "center" } });
-  let u = ui.style(...styles);
+  let u = ui.style(...__l10nStyle(styles));
   if (id) u = u.id(id);
   if (ui.measureText(text, { style: styles }).width / pr().scale <= width) u.label(text);
   else u.paragraph(text, width);
@@ -136,7 +155,7 @@ function topbar(L: Layout): number {
   const hideTitle = shortLand && app.screen === "play";
   const r = ui.place("topbar", { anchor: "top-start", x: L.ox, y: L.oy }, () => {
     ui.column("topbar-col", () => {
-      if (!hideTitle) ui.style(lux() ? "game-title-lux" : "game-title", shortLand ? { text: { size: 20 } } : {}).id("game-title").heading("Lantern Bingo");
+      if (!hideTitle) ui.style(__l10nStyle(lux() ? "game-title-lux" : "game-title"), __l10nStyle(shortLand ? { text: { size: 20 } } : {})).id("game-title").heading("Lantern Bingo");
       para(A.textOf(app.status), L.lw - 16, "status-line", "live-status", true);
       para(app.caption ? "♪ " + T(app.caption) : " ", L.lw - 16, "captions", "captions", true);
     }, { width: L.lw, align: "center", spacing: 2, padding: { top: hideTitle ? 4 : 8 } });
@@ -265,7 +284,7 @@ function titleScreen(L: Layout, top: number): void {
             draw.image(glow(), q.x + q.width / 2 - gs, q.y + q.height / 2 - gs + dy, gs * 2, gs * 2, { blend: "add", tint: `rgba(255,170,70,${(0.35 + 0.3 * pulse).toFixed(3)})` });
           }
           const es = Math.min(250, hs * k);
-          draw.text("🏮", q.x + q.width / 2, q.y + (q.height - es * 1.2) / 2 + dy, { size: es, align: "center" });
+          draw.text("🏮", q.x + q.width / 2, q.y + (q.height - es * 1.2) / 2 + dy, __l10nDrawOptions({ size: es, align: "center" }));
         },
       });
       const mw = shortLand ? Math.min(600, L.lw * 0.92) : Math.min(340, L.lw * 0.92);
@@ -340,9 +359,9 @@ function listScreen(L: Layout, top: number, kind: "journey" | "learn"): void {
             for (let j = i; j < Math.min(items.length, i + cols); j++) {
               const it = items[j]!;
               const inner = cw - 20;
-              if (ui.style(it.cls, { width: cw }).id(it.id).button(it.aria, {
+              if (ui.style(__l10nStyle(it.cls), __l10nStyle({ width: cw })).id(it.id).button(it.aria, {
                 ...(it.locked ? { disabled: true } : {}),
-                content: () => { ui.style({ text: { align: "center" } }).paragraph(it.label, inner); },
+                content: () => { ui.style(__l10nStyle({ text: { align: "center" } })).paragraph(it.label, inner); },
               })) it.act();
             }
           }, { spacing: gap, align: "stretch" });
@@ -404,7 +423,7 @@ function roster(w: number, condensed: boolean): void {
       ui.row(`roster-${r.id}`, () => {
         para(r.name, w * 0.6, r.win ? "winner" : "roster-name");
         ui.spacer();
-        ui.style(r.win ? "winner" : "roster-name").label(r.lines);
+        ui.style(__l10nStyle(r.win ? "winner" : "roster-name")).label(r.lines);
       }, { width: w, align: "center" });
     }
   }, { spacing: 6, width: w });
@@ -507,11 +526,11 @@ function playfield(L: Layout, x: number, y: number, w: number, h: number, kind: 
           else draw.circle(q.x + r, q.y + r, r, P.accent2);
           const txt = v ? String(v) : "—";
           const size = (kind === "land" ? 18 : 24) * k * pr().textScale;
-          const m = draw.measureText(txt, { size, weight: "800" });
-          draw.text(txt, q.x + r, q.y + r - m.height / 2, { size, weight: "800", color: P.markedInk, align: "center" });
+          const m = draw.measureText(txt, __l10nDrawOptions({ size, weight: "800" }));
+          draw.text(txt, q.x + r, q.y + r - m.height / 2, __l10nDrawOptions({ size, weight: "800", color: P.markedInk, align: "center" }));
         },
       });
-      if (timer) ui.style("timer", kind === "land" ? { text: { size: 16 } } : {}).id("call-timer").label(timer);
+      if (timer) ui.style(__l10nStyle("timer"), __l10nStyle(kind === "land" ? { text: { size: 16 } } : {})).id("call-timer").label(timer);
     }, { width: w, align: "center", justify: "center", spacing: 14, height: bannerH });
   });
   // The card.
@@ -547,7 +566,7 @@ function playfield(L: Layout, x: number, y: number, w: number, h: number, kind: 
   if (app.countdown) {
     const size = Math.min(128, Math.max(64, L.lw * 0.14));
     ui.place("countdown", { anchor: "top-start", x: L.ox + cx, y: L.oy + gy }, () => {
-      ui.column("countdown-col", () => ui.style("countdown", { text: { size } }).id("countdown").label(T(app.countdown!)), { width: card, height: card, align: "center", justify: "center" });
+      ui.column("countdown-col", () => ui.style(__l10nStyle("countdown"), __l10nStyle({ text: { size } })).id("countdown").label(T(app.countdown!)), { width: card, height: card, align: "center", justify: "center" });
     });
   }
   // The decorative hall under the card (tall desktop windows only), 4:3, at most 640 wide.
@@ -622,9 +641,9 @@ function drawCell(q: ui.Rect, s: ui.WidgetState, i: number, n: number, marked: b
   const text = free ? T("FREE") : String(n);
   let size = (free ? font * 0.7 : font) * k * pr().textScale;
   const maxW = q.width - 6 * k;
-  let m = draw.measureText(text, { size, weight: "700", letterSpacing: free ? k : 0 });
-  if (m.width > maxW) { size *= maxW / m.width; m = draw.measureText(text, { size, weight: "700", letterSpacing: free ? k : 0 }); }
-  draw.text(text, cx, cy - m.height / 2, { size, weight: "700", color, align: "center", letterSpacing: free ? k : 0, ...(fancy && !marked ? { shadow: { color: "#00000073", x: 0, y: k } } : {}) });
+  let m = draw.measureText(text, __l10nDrawOptions({ size, weight: "700", letterSpacing: free ? k : 0 }));
+  if (m.width > maxW) { size *= maxW / m.width; m = draw.measureText(text, __l10nDrawOptions({ size, weight: "700", letterSpacing: free ? k : 0 })); }
+  draw.text(text, cx, cy - m.height / 2, __l10nDrawOptions({ size, weight: "700", color, align: "center", letterSpacing: free ? k : 0, ...(fancy && !marked ? { shadow: { color: "#00000073", x: 0, y: k } } : {}) }));
   // The free centre is a disabled (pre-marked) button: drawn at the old 45 % opacity over the page.
   if (free) draw.roundRect(q.x - 1, q.y - 1, q.width + 2, q.height + 2, rad * k, P.bg + "8c");
 }
@@ -669,7 +688,7 @@ function resultsScreen(L: Layout, top: number): void {
       table("ranking", iw, s.ranking().map((id, i) => [`${i + 1}. ${id === myId ? T("You") : A.seatName(id)}`, String(s.score(id).total)]), null);
       if (res.unlocked.length) {
         para(T("Achievements unlocked"), iw, "h4");
-        ui.row("achievements", () => { for (const a of res.unlocked) ui.style("ach-chip").label("🏅 " + T(a.name)); }, { spacing: 8 });
+        ui.row("achievements", () => { for (const a of res.unlocked) ui.style(__l10nStyle("ach-chip")).label("🏅 " + T(a.name)); }, { spacing: 8 });
       }
       if (!res.hosted) {
         para(T("Next"), iw, "h4");
@@ -685,8 +704,8 @@ function resultsScreen(L: Layout, top: number): void {
 }
 function table(id: string, w: number, rows: string[][], total: string[] | null): void {
   ui.column(id, () => {
-    rows.forEach((r, i) => ui.row(`${id}-${i}`, () => { para(r[0]!, w * 0.75, "body"); ui.spacer(); ui.style("body").label(r[1]!); }, { style: "score-row", width: w, align: "center" }));
-    if (total) ui.row(`${id}-total`, () => { ui.style("score-total").label(total[0]!); ui.spacer(); ui.style("score-total").id(`${id}-total-v`).label(total[1]!); }, { width: w, align: "center", padding: { start: 8, end: 8, top: 4 } });
+    rows.forEach((r, i) => ui.row(`${id}-${i}`, () => { para(r[0]!, w * 0.75, "body"); ui.spacer(); ui.style(__l10nStyle("body")).label(r[1]!); }, { style: "score-row", width: w, align: "center" }));
+    if (total) ui.row(`${id}-total`, () => { ui.style(__l10nStyle("score-total")).label(total[0]!); ui.spacer(); ui.style(__l10nStyle("score-total")).id(`${id}-total-v`).label(total[1]!); }, { width: w, align: "center", padding: { start: 8, end: 8, top: 4 } });
   }, { spacing: 0, width: w });
 }
 
@@ -710,7 +729,7 @@ function settingsScreen(L: Layout, top: number): void {
       const gw = w - 44;
       group("set-audio", T("Audio"), gw, (inner) => {
         para(T("Volumes, mute, graphics quality, language, reduced motion, high contrast and text size are in the StarHermit Options."), inner, "muted");
-        flow("set-options", [{ id: "btn-options", text: T("Open Options"), act: () => { A.cue("ui"); openMenu(); } }], inner);
+        flow("set-options", [{ id: "btn-options", text: T("Open Options"), act: () => { A.cue("ui"); __l10nOptions(); } }], inner);
       });
       group("set-look", T("Theme"), gw, (inner) => {
         const ids = THEMES.map((t) => t.id);

@@ -1,3 +1,5 @@
+// localization-runtime:attached
+import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The lantern hall on starhermit:scene, as the browser build's HallRenderer
 // (js/game.js) drew it: a 4:3 view under the card on tall desktop windows
 // (wider than 1024 and taller than 900 logical px; collapsed elsewhere, as
@@ -404,7 +406,7 @@ export function showCall(value: number): void {
     ctx.fillRect(0, S * 0.3, S, S * 0.08);
     ctx.fillRect(0, S * 0.62, S, S * 0.08);
     ctx.fillStyle = "#1a2040";
-    ctx.font = `bold ${S / 2}px sans-serif`;
+    ctx.font = __l10nCanvasFont(`bold ${S / 2}px sans-serif`);
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(String(value), S / 2, S * 0.53);
   }

@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Lantern Bingo on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules, the session with its undo and replay
@@ -127,8 +128,12 @@ onUpdate((dt) => {
   audio.update();
   applyContrast(ui.preferences().highContrast);
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   drawScreens();
   handlePointer();
   render.update(frameDt);
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

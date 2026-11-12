@@ -1,0 +1,103 @@
+{
+  "game": {
+    "id": "80f3bdab-352a-4d17-aa72-bb41664f8bb7",
+    "displayName": "Lantern Bingo",
+    "hosting": {
+      "hostingEnabled": true,
+      "hostedUrl": "https://80f3bdab-352a-4d17-aa72-bb41664f8bb7.starhermit.com/index.html",
+      "deployStatus": "live",
+      "pinnedCommitSha": null,
+      "deployedCommitSha": null,
+      "deployError": null,
+      "deployedAt": "2026-11-12T08:15:22.322246+00:00",
+      "externalLaunchUrl": null,
+      "engineVersion": "1.38.0",
+      "deployWarning": null
+    }
+  },
+  "publishedAt": "2026-11-12T08:15:27.001Z",
+  "sourceCommit": "e834463509bd95d99e6328ae5372ad22b5ff062d",
+  "bytesReceived": 1709849,
+  "archiveSha256": "20539932e0b072d4b264b3c964577c61bcfc0334cdb9bd14b4e26d8672fadba4",
+  "indexSha256": "f2881c57c4797e5f6e36308f8fb208c8b7c7a25fd6dfd6dcd5310fbd905970c5",
+  "result": {
+    "clientPublished": true,
+    "serverImageLoaded": false,
+    "imageDigest": null,
+    "bytesReceived": 1709849,
+    "mode": "replace",
+    "filesRemoved": 0,
+    "engineVersion": "1.38.0",
+    "deployWarning": null
+  },
+  "liveVerification": {
+    "at": "2026-11-12T08:15:27.001Z",
+    "files": [
+      {
+        "file": "starhermit-files.json",
+        "sha256": "f2881c57c4797e5f6e36308f8fb208c8b7c7a25fd6dfd6dcd5310fbd905970c5",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Hebrew.ttf",
+        "sha256": "4b043df68a643ea57de116bcfe5460415fec68c87996cde7c73494181dd961ff",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Japanese.otf",
+        "sha256": "13cb1ab72bda2d1936c3a70c9e23147c1121ad0030dc03862d1383dd32b49f83",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Khmer.ttf",
+        "sha256": "cf89799890b276f7756fc28f2cf0244c0e1f0d2cf3c7e8d519ed7fc1b5d3e26d",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/SimplifiedChinese.otf",
+        "sha256": "3cc9dc650fa5ce75df877fb7215d29fb24c2559f2d2db97130da8aef818e1fd4",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Tamil.ttf",
+        "sha256": "530a2d699366ac4890c118320a379468fef71947d6d34209517169db4d5d2232",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/TraditionalChinese.otf",
+        "sha256": "b6d538b02fa12ae9cf9d20cfeab2a8d7f241b64f2a540aee4c4ac2bdd7e549ad",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/common.json",
+        "sha256": "3bf9d4a054b0ded614a0a4f894ca5be2dc21ebfc8834437a8ece7b33c33bebaa",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/fonts.json",
+        "sha256": "37beaea0dba54c9f2c45995cbf9fd19fad21719d701718c41d7e58dd7748ca13",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/locales.json",
+        "sha256": "a63ba65deefff09b3c060865bc8995752d437cf23f28068a7d6ab37265ccc655",
+        "status": 200
+      },
+      {
+        "file": "assets/strings.json",
+        "sha256": "9631f4ccc1d3b53c7d715c51ee052bae23ac12f63913b4dc9803ddc1a5adb677",
+        "status": 200
+      },
+      {
+        "file": "index.html",
+        "sha256": "3e5727b45c9b303140a66c2ed11a5609263f2d9676e809b591eddc7b7e99b065",
+        "status": 200
+      },
+      {
+        "file": "starhermit.txt",
+        "sha256": "d9be57ae5aad0a4483bd00a199fa8948e6fcd5da7c54bf0861e7cdc5cae738d0",
+        "status": 200
+      }
+    ]
+  }
+}

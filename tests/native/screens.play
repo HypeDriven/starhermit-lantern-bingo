@@ -16,9 +16,10 @@ until 60 Accessibility & Controls
 frames 10
 save settings
 click =Open Options
-frames 30
-key F1 1
-frames 30
+until 60 Language
+frames 10
+click =Close
+frames 10
 click =Reset progress
 until 60 This clears journey progress
 frames 10

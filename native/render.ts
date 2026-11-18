@@ -1,11 +1,11 @@
 // localization-runtime:attached
-import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
+import {
+  localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The lantern hall on starhermit:scene, as the browser build's HallRenderer
 // (js/game.js) drew it: a 4:3 view under the card on tall desktop windows
 // (wider than 1024 and taller than 900 logical px; collapsed elsewhere, as
 // the old CSS hid #canvas-holder), with the call ball on its pole under a
-// warm point light, the 5×5 card tiles mirroring the card (marked amber,
-// markable pale gold), the hanging lanterns in rows (an InstancedMesh, ribbed
+// warm point light, the 5×5 card tiles mirroring the card (marked amber, // markable pale gold), the hanging lanterns in rows (an InstancedMesh, ribbed
 // lathe lanterns with caps on detailed looks), the floor disc, the lacquered
 // board, rising dust motes, fog from 12 to 26 and the theme's tint. Clicking
 // a tile marks its cell.
@@ -18,12 +18,9 @@ import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // view sits in its rectangle through setViewOffset, as the old canvas sat
 // between the page's other elements.
 import {
-  ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferGeometry, CanvasTexture, Color, CylinderGeometry,
-  DirectionalLight, ExtrudeGeometry, Fog, HemisphereLight, InstancedMesh, LatheGeometry, Mesh, MeshLambertMaterial,
-  MeshPhysicalMaterial, MeshStandardMaterial, Object3D, ParticleEmitter, PerspectiveCamera, PMREMGenerator, PointLight, PointsMaterial,
-  Raycaster, RepeatWrapping, RoomEnvironment, Shape, SphereGeometry, SRGBColorSpace, Vector2, Vector3, pointerToNdc, renderer, scene,
-  type Material, type Texture,
+  ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight, ExtrudeGeometry, Fog, HemisphereLight, InstancedMesh, LatheGeometry, Mesh, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PMREMGenerator, PointLight, PointsMaterial, Raycaster, RepeatWrapping, RoomEnvironment, Shape, SphereGeometry, SRGBColorSpace, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { frame } from "starhermit:engine";
 import { OffscreenCanvas } from "starhermit:canvas";
 import { THEMES } from "../js/content.js";
@@ -159,7 +156,7 @@ for (let i = 0; i < CELLS; i++) {
   m.userData = { cell: i };
   cells.push(m);
 }
-const motes = new ParticleEmitter({ capacity: MOTE_CAP, material: new PointsMaterial({ color: 0xffc98a, size: 0.05, transparent: true, opacity: 0.6, depthWrite: false, blending: AdditiveBlending }), seed: 0x1a27, space: "local", shape: "box", extent: [6, 0, 3] });
+const motes = new GPUParticleEmitter({ capacity: MOTE_CAP, material: new PointsMaterial({ color: 0xffc98a, size: 0.05, transparent: true, opacity: 0.6, depthWrite: false, blending: AdditiveBlending }), seed: 0x1a27, space: "local", shape: "box", extent: [6, 0, 3] });
 motes.frustumCulled = false;
 motes.position.set(0, 0, -0.5);
 motes.renderOrder = -10;
@@ -182,7 +179,7 @@ function setMotes(): void {
   motes.visible = n > 0;
   motes.clear();
   moteWarmIn = 0;
-  if (!n) { motes.rate = 0; return; }
+  if (!n) { motes.set({ rate: 0 }); return; }
   if (reducedMotion) {
     motes.position.y = 2.5;
     motes.set({ extent: [6, 2.5, 3], velocity: [0, 0, 0], velocitySpread: 0, life: 3600, rate: 0 });

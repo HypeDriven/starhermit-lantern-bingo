@@ -1,3 +1,4 @@
+import { bindings } from "starhermit:input";
 import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
 import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
 // localization-runtime:attached
@@ -113,7 +114,7 @@ const keyName = (action: string): string => bindingLabel(action, "keyboard") || 
 const plain = (s: string): string => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&");
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   const f = frame();
   const P = ink(pr().highContrast);
@@ -860,3 +861,10 @@ function dialogs(L: Layout): void {
 }
 
 void PATTERNS;
+
+export function drawScreens(): void {
+  if (app.screen !== "help") { drawScreensImmediate(); return; }
+  const actions = ["mark","call","claim","undo","hint","pause","camera","back"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
+}

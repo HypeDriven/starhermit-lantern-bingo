@@ -26,7 +26,7 @@
     "favicon.png.ktx2": {"sha256": "ddbef87f2e1a4b5700073ac5369669b44cab435294aedf8ac1bcc533308ae86f", "size": 87776},
     "icon.png": {"sha256": "f482cd362f677d3c0266f6a6b3e2b74ab56c451c271bf1e31ee253105799d0df", "size": 8313},
     "icon.png.ktx2": {"sha256": "ddbef87f2e1a4b5700073ac5369669b44cab435294aedf8ac1bcc533308ae86f", "size": 87776},
-    "index.html": {"sha256": "565ae1b602d747ddc9a72872182147464d3eefd5a6ee0183e3356dbf20e901b2", "size": 1785},
+    "index.html": {"sha256": "7ed9365744267020e9f9581973b23dad337b4e980bc534e4caecfeb7416914ec", "size": 1785},
     "js/content.js": {"sha256": "044a64c9ec617bb802ff6ad976c8c583d1a3ac407981a0a5c14ea162418f8ac3", "size": 7144},
     "js/hosted.js": {"sha256": "d02d8bb96043d3b6b0a27a210cbefc1f856411d6783ad6149b189b7a36a0e6ab", "size": 7163},
     "js/progress.js": {"sha256": "d9a762acb08a57adda4e129b0249cff9c06c58fad60a62cbab7b49f84cb55368", "size": 3964},
@@ -45,7 +45,7 @@
     "native/render.ts": {"sha256": "532aa12b51c142e1bdf6c1764cff6e9aeef7e9a04d2a77f7732d0321d16180f2", "size": 22245},
     "native/screens.ts": {"sha256": "78a3a05d0d2279680ecb800220741ca47d87c1deae19b5e5042568de7a96a9ce", "size": 51011},
     "native/style.ts": {"sha256": "dcafa1fba23d1fe6695171a1fe241df3ff7007aea6301a497ace3cd43faf0c6f", "size": 3317},
-    "publication.json": {"sha256": "d07a12b18a4028e430265b31bc616a9f14f6f534059cd18fec45af437bdb7467", "size": 4292},
+    "publication.json": {"sha256": "83aae9a60048c9554607c721e45cc31840a776033d63cad5dfe27541b18422c8", "size": 4291},
     "server.js": {"sha256": "0eb5acb89e773ea376c15547a697237adf99bfd4ad3b66f7850f6b6afd4bdd7b", "size": 33694},
     "sfx/achieve-bell-bloom.opus": {"sha256": "5f18a81a8532624f186d06c5551a0c77fa889ca686ec5fc50e4f259f20c11e2b", "size": 26377},
     "sfx/call-ball-draw.opus": {"sha256": "d479004d0dfb6323d0d6d5cb9f65b69e0453c7e30624a8800c16e134c71223d0", "size": 18224},
@@ -66,7 +66,7 @@
     "sfx/ui-menu-select.opus": {"sha256": "1565986a08fa84aadcc85e741fc9393dbc49800bfca174c9bb9a524c8e63e9c2", "size": 12697},
     "sfx/win-bingo-bells.opus": {"sha256": "a3b31d9e5957416d98479dce5439f6d303fd58c4bd3e9b6a5bfa2b418f1b3732", "size": 36334},
     "sfx/win-festival-fanfare.opus": {"sha256": "1917293375748f919012ebee3b2c9409d3ee7ceebda97c771af008dad866424f", "size": 39285},
-    "starhermit.txt": {"sha256": "8c3484f63f20cca9cd5dce4fe7983405253e7f447ba2485e194adc1484226ed7", "size": 1953}
+    "starhermit.txt": {"sha256": "059862f66727195bd307e5ad85881a112c2e9373ccda303c5dca95a73f524536", "size": 1953}
   },
   "excluded": ["coverart.png", "node_modules/", "package-lock.json", "package.json", "sfx/manifest.md", "sfx/manifest.txt", "spec.md", "tests/", "tools/", "tsconfig.json"],
   "format": 1

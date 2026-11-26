@@ -45,7 +45,7 @@
     "native/render.ts": {"sha256": "532aa12b51c142e1bdf6c1764cff6e9aeef7e9a04d2a77f7732d0321d16180f2", "size": 22245},
     "native/screens.ts": {"sha256": "78a3a05d0d2279680ecb800220741ca47d87c1deae19b5e5042568de7a96a9ce", "size": 51011},
     "native/style.ts": {"sha256": "dcafa1fba23d1fe6695171a1fe241df3ff7007aea6301a497ace3cd43faf0c6f", "size": 3317},
-    "publication.json": {"sha256": "df4dfef31fce648ce6419cea07bd3ca36b776428f2287f355ed10992a4592176", "size": 4292},
+    "publication.json": {"sha256": "d07a12b18a4028e430265b31bc616a9f14f6f534059cd18fec45af437bdb7467", "size": 4292},
     "server.js": {"sha256": "0eb5acb89e773ea376c15547a697237adf99bfd4ad3b66f7850f6b6afd4bdd7b", "size": 33694},
     "sfx/achieve-bell-bloom.opus": {"sha256": "5f18a81a8532624f186d06c5551a0c77fa889ca686ec5fc50e4f259f20c11e2b", "size": 26377},
     "sfx/call-ball-draw.opus": {"sha256": "d479004d0dfb6323d0d6d5cb9f65b69e0453c7e30624a8800c16e134c71223d0", "size": 18224},

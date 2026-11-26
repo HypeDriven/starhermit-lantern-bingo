@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T07:01:02.659073+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-26T16:04:59.84485+00:00",
+    "coverArtUpdatedAt": "2026-11-26T21:00:26.314184+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-26T16:04:58.411183+00:00",
+      "deployedAt": "2026-11-26T21:00:26.273108+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.50.0",
+      "engineVersion": "1.51.0",
       "deployWarning": null
     },
     "description": "Mark called numbers on your bingo card and claim the target pattern before your rivals.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-26T16:04:58.969Z",
-  "sourceCommit": "e979a6573e26fb1ad14fac7bc22252d240d16940",
-  "bytesReceived": 2936609,
-  "archiveSha256": "53e7c32e1e2a632e7a80be4074639f3d31f79b012ae1e598762bfc14f07c18c9",
+  "publishedAt": "2026-11-26T21:00:26.558Z",
+  "sourceCommit": "444995003c32665e180f2fce6b5faad4acc467b5",
+  "bytesReceived": 2936653,
+  "archiveSha256": "38521e014895c1ed9de06899f861937fae748955d2253c0b30f0d006f9c788ed",
   "indexSha256": "61e599225d7446dddadb28c6ff0a378d55b7941a971172a3de756cddbd06c1f2",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 2936609,
+    "bytesReceived": 2936653,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.50.0",
+    "engineVersion": "1.51.0",
     "deployWarning": null
   },
   "liveVerification": {

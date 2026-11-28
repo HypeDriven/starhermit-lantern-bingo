@@ -54,7 +54,6 @@ export function loadSfx(): void {
       if (list.length) banks.set(event, new SoundBank({ clips: list, bus: event === "ui" ? "interface" : "effects", gain: LEVEL.effects }));
     });
   }
-  void renderAmbience().then((c) => { bed = c; }, (e: unknown) => console.warn(`ambience: ${String(e)}`));
 }
 
 /** Plays an event's sample (once loaded) and writes its caption. */
@@ -91,7 +90,17 @@ export function startAmbience(): void { ambienceOn = true; }
 export function setSuspended(on: boolean): void { suspended = on; }
 
 /** Each frame once the mixer runs: the ambience bed. */
+let __bedsStarted = false;
+function startBeds(): void {
+  if (__bedsStarted) return;
+  __bedsStarted = true;
+  void (async () => {
+    void renderAmbience().then((c) => { bed = c; }, (e: unknown) => console.warn(`ambience: ${String(e)}`));
+  })();
+}
+
 export function update(): void {
+  startBeds();
   if (context.state !== "running") return;
   try {
     if (!bed) return;
